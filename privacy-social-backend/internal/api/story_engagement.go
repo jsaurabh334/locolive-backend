@@ -1,0 +1,154 @@
+package api
+
+import (
+	"database/sql"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"privacy-social-backend/internal/repository/db"
+	"privacy-social-backend/internal/token"
+)
+
+type viewStoryRequest struct {
+	StoryID string `uri:"id" binding:"required,uuid"`
+}
+
+// viewStory records that a user viewed a story
+func (server *Server) viewStory(ctx *gin.Context) {
+	var req viewStoryRequest
+	if err := ctx.ShouldBindUri(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	storyID, _ := uuid.Parse(req.StoryID)
+
+	view, err := server.store.CreateStoryView(ctx, db.CreateStoryViewParams{
+		StoryID: storyID,
+		UserID:  authPayload.ID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, view)
+}
+
+// getStoryViewers returns list of users who viewed the story (owner only)
+func (server *Server) getStoryViewers(ctx *gin.Context) {
+	var req viewStoryRequest
+	if err := ctx.ShouldBindUri(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	storyID, _ := uuid.Parse(req.StoryID)
+
+	// Verify user owns the story
+	story, err := server.store.GetStoryByID(ctx, storyID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "story not found"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	if story.UserID != authPayload.ID {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "you can only view your own story viewers"})
+		return
+	}
+
+	viewers, err := server.store.GetStoryViewers(ctx, storyID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, viewers)
+}
+
+type reactToStoryRequest struct {
+	StoryID string `uri:"id" binding:"required,uuid"`
+	Emoji   string `json:"emoji" binding:"required,min=1,max=10"`
+}
+
+// reactToStory adds or updates a reaction to a story
+func (server *Server) reactToStory(ctx *gin.Context) {
+	var uriReq viewStoryRequest
+	if err := ctx.ShouldBindUri(&uriReq); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	var bodyReq struct {
+		Emoji string `json:"emoji" binding:"required,min=1,max=10"`
+	}
+	if err := ctx.ShouldBindJSON(&bodyReq); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	storyID, _ := uuid.Parse(uriReq.StoryID)
+
+	reaction, err := server.store.CreateStoryReaction(ctx, db.CreateStoryReactionParams{
+		StoryID: storyID,
+		UserID:  authPayload.ID,
+		Emoji:   bodyReq.Emoji,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, reaction)
+}
+
+// deleteStoryReaction removes a user's reaction from a story
+func (server *Server) deleteStoryReaction(ctx *gin.Context) {
+	var req viewStoryRequest
+	if err := ctx.ShouldBindUri(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	storyID, _ := uuid.Parse(req.StoryID)
+
+	err := server.store.DeleteStoryReaction(ctx, db.DeleteStoryReactionParams{
+		StoryID: storyID,
+		UserID:  authPayload.ID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "reaction removed"})
+}
+
+// getStoryReactions returns all reactions for a story
+func (server *Server) getStoryReactions(ctx *gin.Context) {
+	var req viewStoryRequest
+	if err := ctx.ShouldBindUri(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	storyID, _ := uuid.Parse(req.StoryID)
+
+	reactions, err := server.store.GetStoryReactions(ctx, storyID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, reactions)
+}
