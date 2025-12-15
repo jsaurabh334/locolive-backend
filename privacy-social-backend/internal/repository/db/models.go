@@ -315,6 +315,7 @@ type Story struct {
 	ExpiresAt    time.Time         `json:"expires_at"`
 	CreatedAt    time.Time         `json:"created_at"`
 	IsAnonymous  bool              `json:"is_anonymous"`
+	IsPremium    sql.NullBool      `json:"is_premium"`
 }
 
 type StoryReaction struct {
@@ -333,18 +334,23 @@ type StoryView struct {
 }
 
 type User struct {
-	ID             uuid.UUID      `json:"id"`
-	Phone          string         `json:"phone"`
-	PasswordHash   string         `json:"password_hash"`
-	Username       string         `json:"username"`
-	FullName       string         `json:"full_name"`
-	AvatarUrl      sql.NullString `json:"avatar_url"`
-	Bio            sql.NullString `json:"bio"`
-	Role           UserRole       `json:"role"`
-	TrustLevel     int32          `json:"trust_level"`
-	IsVerified     bool           `json:"is_verified"`
-	IsShadowBanned bool           `json:"is_shadow_banned"`
-	LastActiveAt   sql.NullTime   `json:"last_active_at"`
-	CreatedAt      time.Time      `json:"created_at"`
-	IsGhostMode    bool           `json:"is_ghost_mode"`
+	ID                     uuid.UUID      `json:"id"`
+	Phone                  string         `json:"phone"`
+	PasswordHash           string         `json:"password_hash"`
+	Username               string         `json:"username"`
+	FullName               string         `json:"full_name"`
+	AvatarUrl              sql.NullString `json:"avatar_url"`
+	Bio                    sql.NullString `json:"bio"`
+	Role                   UserRole       `json:"role"`
+	TrustLevel             int32          `json:"trust_level"`
+	IsVerified             bool           `json:"is_verified"`
+	IsShadowBanned         bool           `json:"is_shadow_banned"`
+	LastActiveAt           sql.NullTime   `json:"last_active_at"`
+	CreatedAt              time.Time      `json:"created_at"`
+	IsGhostMode            bool           `json:"is_ghost_mode"`
+	ActivityStreak         sql.NullInt32  `json:"activity_streak"`
+	StreakUpdatedAt        sql.NullTime   `json:"streak_updated_at"`
+	IsPremium              sql.NullBool   `json:"is_premium"`
+	StreakFreezesRemaining int32          `json:"streak_freezes_remaining"`
+	BoostExpiresAt         sql.NullTime   `json:"boost_expires_at"`
 }

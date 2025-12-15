@@ -21,21 +21,23 @@ INSERT INTO stories (
   geohash,
   geom,
   is_anonymous,
+  is_premium,
   expires_at
 ) VALUES (
-  $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5::float8, $6::float8), 4326), $7, $8
-) RETURNING id, user_id, media_url, media_type, thumbnail_url, caption, geohash, geom, visibility, expires_at, created_at, is_anonymous
+  $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5::float8, $6::float8), 4326), $7, $8, $9
+) RETURNING id, user_id, media_url, media_type, thumbnail_url, caption, geohash, geom, visibility, expires_at, created_at, is_anonymous, is_premium
 `
 
 type CreateStoryParams struct {
-	UserID      uuid.UUID `json:"user_id"`
-	MediaUrl    string    `json:"media_url"`
-	MediaType   string    `json:"media_type"`
-	Geohash     string    `json:"geohash"`
-	Lng         float64   `json:"lng"`
-	Lat         float64   `json:"lat"`
-	IsAnonymous bool      `json:"is_anonymous"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	UserID      uuid.UUID    `json:"user_id"`
+	MediaUrl    string       `json:"media_url"`
+	MediaType   string       `json:"media_type"`
+	Geohash     string       `json:"geohash"`
+	Lng         float64      `json:"lng"`
+	Lat         float64      `json:"lat"`
+	IsAnonymous bool         `json:"is_anonymous"`
+	IsPremium   sql.NullBool `json:"is_premium"`
+	ExpiresAt   time.Time    `json:"expires_at"`
 }
 
 func (q *Queries) CreateStory(ctx context.Context, arg CreateStoryParams) (Story, error) {
@@ -47,6 +49,7 @@ func (q *Queries) CreateStory(ctx context.Context, arg CreateStoryParams) (Story
 		arg.Lng,
 		arg.Lat,
 		arg.IsAnonymous,
+		arg.IsPremium,
 		arg.ExpiresAt,
 	)
 	var i Story
@@ -63,6 +66,7 @@ func (q *Queries) CreateStory(ctx context.Context, arg CreateStoryParams) (Story
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.IsAnonymous,
+		&i.IsPremium,
 	)
 	return i, err
 }
@@ -88,14 +92,94 @@ func (q *Queries) DeleteStory(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getConnectionStories = `-- name: GetConnectionStories :many
+
+SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, s.is_premium, u.username, u.avatar_url, u.is_premium
+FROM stories s
+JOIN users u ON s.user_id = u.id
+JOIN connections c ON 
+  (c.requester_id = $1 AND c.target_id = s.user_id) OR
+  (c.target_id = $1 AND c.requester_id = s.user_id)
+WHERE 
+  c.status = 'accepted'
+  AND s.expires_at > now()
+  AND u.is_shadow_banned = false
+  -- Strict Streak Rule applies to connections too? User says "Profile is NOT visible"
+  -- Assuming this applies everywhere
+  AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+ORDER BY s.created_at DESC
+`
+
+type GetConnectionStoriesRow struct {
+	ID           uuid.UUID         `json:"id"`
+	UserID       uuid.UUID         `json:"user_id"`
+	MediaUrl     string            `json:"media_url"`
+	MediaType    string            `json:"media_type"`
+	ThumbnailUrl sql.NullString    `json:"thumbnail_url"`
+	Caption      sql.NullString    `json:"caption"`
+	Geohash      string            `json:"geohash"`
+	Geom         interface{}       `json:"geom"`
+	Visibility   StoryAvailability `json:"visibility"`
+	ExpiresAt    time.Time         `json:"expires_at"`
+	CreatedAt    time.Time         `json:"created_at"`
+	IsAnonymous  bool              `json:"is_anonymous"`
+	IsPremium    sql.NullBool      `json:"is_premium"`
+	Username     string            `json:"username"`
+	AvatarUrl    sql.NullString    `json:"avatar_url"`
+	IsPremium_2  sql.NullBool      `json:"is_premium_2"`
+}
+
+// Newest third
+// Get stories from connected users (not limited by radius)
+func (q *Queries) GetConnectionStories(ctx context.Context, userID uuid.UUID) ([]GetConnectionStoriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getConnectionStories, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetConnectionStoriesRow
+	for rows.Next() {
+		var i GetConnectionStoriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.MediaUrl,
+			&i.MediaType,
+			&i.ThumbnailUrl,
+			&i.Caption,
+			&i.Geohash,
+			&i.Geom,
+			&i.Visibility,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.IsAnonymous,
+			&i.IsPremium,
+			&i.Username,
+			&i.AvatarUrl,
+			&i.IsPremium_2,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStoriesInBounds = `-- name: GetStoriesInBounds :many
-SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, u.username, u.avatar_url
+SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, s.is_premium, u.username, u.avatar_url 
 FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE s.geom && ST_MakeEnvelope($1::float8, $2::float8, $3::float8, $4::float8, 4326)
 AND s.expires_at > now()
 AND u.is_ghost_mode = false
 AND u.is_shadow_banned = false
+AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
 ORDER BY s.created_at DESC
 LIMIT 100
 `
@@ -120,6 +204,7 @@ type GetStoriesInBoundsRow struct {
 	ExpiresAt    time.Time         `json:"expires_at"`
 	CreatedAt    time.Time         `json:"created_at"`
 	IsAnonymous  bool              `json:"is_anonymous"`
+	IsPremium    sql.NullBool      `json:"is_premium"`
 	Username     string            `json:"username"`
 	AvatarUrl    sql.NullString    `json:"avatar_url"`
 }
@@ -152,6 +237,7 @@ func (q *Queries) GetStoriesInBounds(ctx context.Context, arg GetStoriesInBounds
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.IsAnonymous,
+			&i.IsPremium,
 			&i.Username,
 			&i.AvatarUrl,
 		); err != nil {
@@ -169,34 +255,73 @@ func (q *Queries) GetStoriesInBounds(ctx context.Context, arg GetStoriesInBounds
 }
 
 const getStoriesWithinRadius = `-- name: GetStoriesWithinRadius :many
-SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous FROM stories s
+SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, s.is_premium, u.username, u.avatar_url, u.is_premium
+FROM stories s
 JOIN users u ON s.user_id = u.id
-WHERE ST_DWithin(
-  s.geom,
-  ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography,
-  $3::float8
-)
-AND s.expires_at > now()
-AND u.is_ghost_mode = false
-AND u.is_shadow_banned = false
-ORDER BY s.created_at DESC
+WHERE 
+  ST_DWithin(
+    s.geom::geography,
+    ST_MakePoint($1::float8, $2::float8)::geography,
+    $3
+  )
+  AND s.expires_at > now()
+  AND (s.is_anonymous = false OR s.user_id = $4) -- Only show non-anonymous or own stories in feed (logic choice)
+  AND u.is_ghost_mode = false -- Hide ghost mode users
+  AND u.is_shadow_banned = false
+  -- Strict Streak Rule: User must have posted today or yesterday
+  AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+  -- Block Rule: Exclude if blocked by either party
+  AND NOT EXISTS (
+    SELECT 1 FROM connections c
+    WHERE (c.requester_id = $4 AND c.target_id = s.user_id AND c.status = 'blocked')
+       OR (c.requester_id = s.user_id AND c.target_id = $4 AND c.status = 'blocked')
+  )
+ORDER BY 
+  (u.boost_expires_at > now()) DESC NULLS LAST, -- Live boost first
+  u.is_premium DESC,                            -- Premium second
+  s.created_at DESC
 `
 
 type GetStoriesWithinRadiusParams struct {
-	Lng          float64 `json:"lng"`
-	Lat          float64 `json:"lat"`
-	RadiusMeters float64 `json:"radius_meters"`
+	Lng          float64     `json:"lng"`
+	Lat          float64     `json:"lat"`
+	RadiusMeters interface{} `json:"radius_meters"`
+	UserID       uuid.UUID   `json:"user_id"`
 }
 
-func (q *Queries) GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]Story, error) {
-	rows, err := q.db.QueryContext(ctx, getStoriesWithinRadius, arg.Lng, arg.Lat, arg.RadiusMeters)
+type GetStoriesWithinRadiusRow struct {
+	ID           uuid.UUID         `json:"id"`
+	UserID       uuid.UUID         `json:"user_id"`
+	MediaUrl     string            `json:"media_url"`
+	MediaType    string            `json:"media_type"`
+	ThumbnailUrl sql.NullString    `json:"thumbnail_url"`
+	Caption      sql.NullString    `json:"caption"`
+	Geohash      string            `json:"geohash"`
+	Geom         interface{}       `json:"geom"`
+	Visibility   StoryAvailability `json:"visibility"`
+	ExpiresAt    time.Time         `json:"expires_at"`
+	CreatedAt    time.Time         `json:"created_at"`
+	IsAnonymous  bool              `json:"is_anonymous"`
+	IsPremium    sql.NullBool      `json:"is_premium"`
+	Username     string            `json:"username"`
+	AvatarUrl    sql.NullString    `json:"avatar_url"`
+	IsPremium_2  sql.NullBool      `json:"is_premium_2"`
+}
+
+func (q *Queries) GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]GetStoriesWithinRadiusRow, error) {
+	rows, err := q.db.QueryContext(ctx, getStoriesWithinRadius,
+		arg.Lng,
+		arg.Lat,
+		arg.RadiusMeters,
+		arg.UserID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Story
+	var items []GetStoriesWithinRadiusRow
 	for rows.Next() {
-		var i Story
+		var i GetStoriesWithinRadiusRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -210,6 +335,10 @@ func (q *Queries) GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWith
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.IsAnonymous,
+			&i.IsPremium,
+			&i.Username,
+			&i.AvatarUrl,
+			&i.IsPremium_2,
 		); err != nil {
 			return nil, err
 		}
@@ -225,7 +354,7 @@ func (q *Queries) GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWith
 }
 
 const getStoryByID = `-- name: GetStoryByID :one
-SELECT id, user_id, media_url, media_type, thumbnail_url, caption, geohash, geom, visibility, expires_at, created_at, is_anonymous FROM stories
+SELECT id, user_id, media_url, media_type, thumbnail_url, caption, geohash, geom, visibility, expires_at, created_at, is_anonymous, is_premium FROM stories
 WHERE id = $1 LIMIT 1
 `
 
@@ -245,6 +374,7 @@ func (q *Queries) GetStoryByID(ctx context.Context, id uuid.UUID) (Story, error)
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.IsAnonymous,
+		&i.IsPremium,
 	)
 	return i, err
 }
@@ -272,7 +402,7 @@ func (q *Queries) GetStoryStats(ctx context.Context) (GetStoryStatsRow, error) {
 }
 
 const listAllStories = `-- name: ListAllStories :many
-SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, u.username
+SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, s.is_premium, u.username
 FROM stories s
 JOIN users u ON s.user_id = u.id
 ORDER BY s.created_at DESC
@@ -297,6 +427,7 @@ type ListAllStoriesRow struct {
 	ExpiresAt    time.Time         `json:"expires_at"`
 	CreatedAt    time.Time         `json:"created_at"`
 	IsAnonymous  bool              `json:"is_anonymous"`
+	IsPremium    sql.NullBool      `json:"is_premium"`
 	Username     string            `json:"username"`
 }
 
@@ -323,6 +454,7 @@ func (q *Queries) ListAllStories(ctx context.Context, arg ListAllStoriesParams) 
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.IsAnonymous,
+			&i.IsPremium,
 			&i.Username,
 		); err != nil {
 			return nil, err

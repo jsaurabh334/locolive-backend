@@ -1,7 +1,11 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mmcloughlin/geohash"
@@ -15,6 +19,8 @@ type getStoriesMapRequest struct {
 	East  float64 `form:"east" binding:"required,min=-180,max=180"`
 	West  float64 `form:"west" binding:"required,min=-180,max=180"`
 }
+
+const mapCacheTTL = 5 * time.Minute
 
 // getStoriesMap returns stories within a bounding box for map display
 func (server *Server) getStoriesMap(ctx *gin.Context) {
@@ -31,6 +37,17 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 	}
 	if req.East <= req.West {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "east must be greater than west"})
+		return
+	}
+
+	// Create cache key from bounding box (rounded to 2 decimals for better cache hits)
+	cacheKey := fmt.Sprintf("map:%.2f:%.2f:%.2f:%.2f", req.North, req.South, req.East, req.West)
+	
+	// Try Redis cache first
+	cachedData, err := server.redis.Get(context.Background(), cacheKey).Result()
+	if err == nil && cachedData != "" {
+		ctx.Header("X-Cache", "HIT")
+		ctx.Data(http.StatusOK, "application/json", []byte(cachedData))
 		return
 	}
 
@@ -85,8 +102,15 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 		response = append(response, cluster)
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	result := gin.H{
 		"clusters": response,
 		"total":    len(stories),
-	})
+	}
+	
+	// Cache the result
+	responseJSON, _ := json.Marshal(result)
+	server.redis.Set(context.Background(), cacheKey, responseJSON, mapCacheTTL)
+
+	ctx.Header("X-Cache", "MISS")
+	ctx.JSON(http.StatusOK, result)
 }

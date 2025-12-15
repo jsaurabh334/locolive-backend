@@ -1,12 +1,14 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mmcloughlin/geohash"
+	"github.com/rs/zerolog/log"
 
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
@@ -38,7 +40,38 @@ func (server *Server) createStory(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
 	hash := geohash.Encode(req.Latitude, req.Longitude)
-	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+
+    // Safety Check: Fake GPS
+    val := server.safety.ValidateUserMovement(ctx, authPayload.ID.String(), req.Latitude, req.Longitude)
+    if !val.Allowed {
+        if val.ShouldBan {
+            // Shadow ban the user (silently)
+             server.store.BanUser(ctx, db.BanUserParams{
+                ID:             authPayload.ID,
+                IsShadowBanned: true,
+            })
+            log.Warn().Str("user_id", authPayload.ID.String()).Msg("User shadow-banned for fake GPS")
+        }
+        // If simply not allowed but not banned, return error? 
+        // For Fake GPS (Speed > 1000km/h), ShouldBan is always true.
+        // We continue execution to maintain the "Shadow" illusion (story is created but user is banned, so nobody sees it)
+    }
+	
+	// Get user to check premium status
+	user, err := server.store.GetUserByID(ctx, authPayload.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	
+	// Premium users get 48h expiry, free users get 24h
+	expiryDuration := 24 * time.Hour
+	isPremium := false
+	if user.IsPremium.Valid && user.IsPremium.Bool {
+		expiryDuration = 48 * time.Hour
+		isPremium = true
+	}
+	expiresAt := time.Now().UTC().Add(expiryDuration)
 
 	// In real app: Validate/Upload to S3 here if receiving raw file. 
     // Here we accept URL.
@@ -51,11 +84,19 @@ func (server *Server) createStory(ctx *gin.Context) {
 		Lng:         req.Longitude,
 		Lat:         req.Latitude,
 		IsAnonymous: req.IsAnonymous,
+		IsPremium:   sql.NullBool{Bool: isPremium, Valid: true},
 		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
+	}
+
+	// Update user activity (for visibility system)
+	_, err = server.store.UpdateUserActivity(ctx, authPayload.ID)
+	if err != nil {
+		// Log error but don't fail the request
+		log.Error().Err(err).Msg("Failed to update user activity")
 	}
 
 	// Invalidate feed cache for the area
@@ -97,19 +138,15 @@ func (server *Server) getFeed(ctx *gin.Context) {
 	}
 
 	// Cache miss - Dynamic Radius Discovery
-	var stories []db.Story
-	currentRadius := float64(defaultRadiusMeters)
-	expansionSteps := []int{5000, 10000, 15000, 20000} // 5km, 10km, 15km, 20km
+	var stories []db.GetStoriesWithinRadiusRow
+	expansionSteps := []int{5000, 10000, 15000, 20000} // 5km -> 20km auto-expansion
 	var message string
-	var expanded bool
 
 	for _, radius := range expansionSteps {
-		currentRadius = float64(radius)
-		
 		stories, err = server.store.GetStoriesWithinRadius(ctx, db.GetStoriesWithinRadiusParams{
 			Lng:          req.Longitude,
 			Lat:          req.Latitude,
-			RadiusMeters: currentRadius,
+			RadiusMeters: float64(radius),
 		})
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -117,34 +154,21 @@ func (server *Server) getFeed(ctx *gin.Context) {
 		}
 
 		if len(stories) > 0 {
-			// Found stories at this radius
-			if currentRadius > float64(defaultRadiusMeters) {
-				expanded = true
-				message = "Expanded search to find nearby stories"
-			} else {
-				message = "Stories found nearby"
-			}
+			// Found stories, stop expansion
+			message = "Nearby"
 			break
-		}
-		
-		// No stories yet, will expand in next iteration
-		if currentRadius < float64(maxRadiusMeters) {
-			message = "Expanding range to find stories..."
 		}
 	}
 
-	// If still no stories after max radius
+	// If still no stories after max radius (20km)
 	if len(stories) == 0 {
-		message = "No stories found within 20km. Be the first to share!"
+		message = "No users found nearby"
 	}
 
 	response := gin.H{
-		"radius_meters": currentRadius,
-		"radius_km":     currentRadius / 1000,
-		"stories":       stories,
-		"count":         len(stories),
-		"expanded":      expanded,
-		"message":       message,
+		"stories": stories,
+		"count":   len(stories),
+		"message": message,
 	}
 
 	// Cache the result for 5 minutes
@@ -153,4 +177,33 @@ func (server *Server) getFeed(ctx *gin.Context) {
 
 	ctx.Header("X-Cache", "MISS")
 	ctx.JSON(http.StatusOK, response)
+}
+
+// getConnectionStories returns stories from connected users, ignoring radius
+func (server *Server) getConnectionStories(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	// Cache key based on user ID
+	cacheKey := "stories:connections:" + authPayload.ID.String()
+
+	// Try Redis cache first
+	cachedData, err := server.redis.Get(ctx, cacheKey).Result()
+	if err == nil && cachedData != "" {
+		ctx.Header("X-Cache", "HIT")
+		ctx.Data(http.StatusOK, "application/json", []byte(cachedData))
+		return
+	}
+
+	stories, err := server.store.GetConnectionStories(ctx, authPayload.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Cache for 5 minutes
+	responseJSON, _ := json.Marshal(stories)
+	server.redis.Set(ctx, cacheKey, responseJSON, feedCacheTTL)
+
+	ctx.Header("X-Cache", "MISS")
+	ctx.JSON(http.StatusOK, stories)
 }

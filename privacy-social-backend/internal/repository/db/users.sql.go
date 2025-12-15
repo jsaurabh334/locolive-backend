@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -16,7 +17,7 @@ const banUser = `-- name: BanUser :one
 UPDATE users
 SET is_shadow_banned = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
 `
 
 type BanUserParams struct {
@@ -42,6 +43,50 @@ func (q *Queries) BanUser(ctx context.Context, arg BanUserParams) (User, error) 
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
+	)
+	return i, err
+}
+
+const boostUser = `-- name: BoostUser :one
+UPDATE users
+SET boost_expires_at = $2
+WHERE id = $1
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+`
+
+type BoostUserParams struct {
+	ID             uuid.UUID    `json:"id"`
+	BoostExpiresAt sql.NullTime `json:"boost_expires_at"`
+}
+
+func (q *Queries) BoostUser(ctx context.Context, arg BoostUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, boostUser, arg.ID, arg.BoostExpiresAt)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Phone,
+		&i.PasswordHash,
+		&i.Username,
+		&i.FullName,
+		&i.AvatarUrl,
+		&i.Bio,
+		&i.Role,
+		&i.TrustLevel,
+		&i.IsVerified,
+		&i.IsShadowBanned,
+		&i.LastActiveAt,
+		&i.CreatedAt,
+		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
 	)
 	return i, err
 }
@@ -65,7 +110,7 @@ INSERT INTO users (
   full_name
 ) VALUES (
   $1, $2, $3, $4
-) RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode
+) RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
 `
 
 type CreateUserParams struct {
@@ -98,6 +143,11 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
 	)
 	return i, err
 }
@@ -123,8 +173,53 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getUserActivityStatus = `-- name: GetUserActivityStatus :one
+SELECT 
+  id,
+  username,
+  last_active_at,
+  CASE
+    WHEN DATE(last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
+    ELSE activity_streak
+  END as activity_streak,
+  CASE
+    WHEN DATE(last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN 'active'
+    ELSE 'hidden'
+  END as visibility_status,
+  CASE
+    WHEN DATE(last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN true
+    ELSE false
+  END as is_visible
+FROM users
+WHERE id = $1
+`
+
+type GetUserActivityStatusRow struct {
+	ID               uuid.UUID    `json:"id"`
+	Username         string       `json:"username"`
+	LastActiveAt     sql.NullTime `json:"last_active_at"`
+	ActivityStreak   interface{}  `json:"activity_streak"`
+	VisibilityStatus string       `json:"visibility_status"`
+	IsVisible        bool         `json:"is_visible"`
+}
+
+// Get user's activity status and visibility
+func (q *Queries) GetUserActivityStatus(ctx context.Context, id uuid.UUID) (GetUserActivityStatusRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserActivityStatus, id)
+	var i GetUserActivityStatusRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.LastActiveAt,
+		&i.ActivityStreak,
+		&i.VisibilityStatus,
+		&i.IsVisible,
+	)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode FROM users
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at FROM users
 WHERE id = $1 LIMIT 1
 `
 
@@ -146,12 +241,17 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode FROM users
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at FROM users
 WHERE phone = $1 LIMIT 1
 `
 
@@ -173,6 +273,66 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone string) (User, error
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
+	)
+	return i, err
+}
+
+const getUserProfile = `-- name: GetUserProfile :one
+SELECT 
+  id,
+  username,
+  full_name,
+  avatar_url,
+  bio,
+  is_premium,
+  CASE
+    WHEN DATE(last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
+    ELSE activity_streak
+  END as activity_streak,
+  last_active_at,
+  created_at,
+  CASE
+    WHEN DATE(last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN 'active'
+    ELSE 'hidden'
+  END as visibility_status
+FROM users
+WHERE id = $1
+AND is_shadow_banned = false
+`
+
+type GetUserProfileRow struct {
+	ID               uuid.UUID      `json:"id"`
+	Username         string         `json:"username"`
+	FullName         string         `json:"full_name"`
+	AvatarUrl        sql.NullString `json:"avatar_url"`
+	Bio              sql.NullString `json:"bio"`
+	IsPremium        sql.NullBool   `json:"is_premium"`
+	ActivityStreak   interface{}    `json:"activity_streak"`
+	LastActiveAt     sql.NullTime   `json:"last_active_at"`
+	CreatedAt        time.Time      `json:"created_at"`
+	VisibilityStatus string         `json:"visibility_status"`
+}
+
+// Get public user profile information
+func (q *Queries) GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProfileRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserProfile, id)
+	var i GetUserProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.FullName,
+		&i.AvatarUrl,
+		&i.Bio,
+		&i.IsPremium,
+		&i.ActivityStreak,
+		&i.LastActiveAt,
+		&i.CreatedAt,
+		&i.VisibilityStatus,
 	)
 	return i, err
 }
@@ -200,7 +360,7 @@ func (q *Queries) GetUserStats(ctx context.Context) (GetUserStatsRow, error) {
 
 const listUsers = `-- name: ListUsers :many
 
-SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode FROM users
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at FROM users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -235,6 +395,11 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.LastActiveAt,
 			&i.CreatedAt,
 			&i.IsGhostMode,
+			&i.ActivityStreak,
+			&i.StreakUpdatedAt,
+			&i.IsPremium,
+			&i.StreakFreezesRemaining,
+			&i.BoostExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -254,7 +419,7 @@ const toggleGhostMode = `-- name: ToggleGhostMode :one
 UPDATE users
 SET is_ghost_mode = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
 `
 
 type ToggleGhostModeParams struct {
@@ -281,6 +446,63 @@ func (q *Queries) ToggleGhostMode(ctx context.Context, arg ToggleGhostModeParams
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
+	)
+	return i, err
+}
+
+const updateUserActivity = `-- name: UpdateUserActivity :one
+UPDATE users
+SET 
+  last_active_at = now(),
+  activity_streak = CASE
+    -- If last active was yesterday, increment streak
+    WHEN DATE(last_active_at) = CURRENT_DATE - INTERVAL '1 day' THEN activity_streak + 1
+    -- If last active was today, keep streak
+    WHEN DATE(last_active_at) = CURRENT_DATE THEN activity_streak
+    -- If missed days but has freezes, keep streak
+    WHEN streak_freezes_remaining > 0 THEN activity_streak
+    -- Otherwise reset streak to 1
+    ELSE 1
+  END,
+  streak_freezes_remaining = CASE
+    -- Consume freeze only if missed days and has freezes
+    WHEN DATE(last_active_at) < CURRENT_DATE - INTERVAL '1 day' AND streak_freezes_remaining > 0 THEN streak_freezes_remaining - 1
+    ELSE streak_freezes_remaining
+  END,
+  streak_updated_at = now()
+WHERE id = $1
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+`
+
+// Updates last_active_at and calculates activity streak
+func (q *Queries) UpdateUserActivity(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRowContext(ctx, updateUserActivity, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Phone,
+		&i.PasswordHash,
+		&i.Username,
+		&i.FullName,
+		&i.AvatarUrl,
+		&i.Bio,
+		&i.Role,
+		&i.TrustLevel,
+		&i.IsVerified,
+		&i.IsShadowBanned,
+		&i.LastActiveAt,
+		&i.CreatedAt,
+		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
 	)
 	return i, err
 }
@@ -292,7 +514,7 @@ SET
   avatar_url = COALESCE($3, avatar_url),
   bio = COALESCE($4, bio)
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
 `
 
 type UpdateUserProfileParams struct {
@@ -325,6 +547,11 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
 	)
 	return i, err
 }
@@ -333,7 +560,7 @@ const updateUserTrust = `-- name: UpdateUserTrust :one
 UPDATE users
 SET trust_level = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
 `
 
 type UpdateUserTrustParams struct {
@@ -359,6 +586,11 @@ func (q *Queries) UpdateUserTrust(ctx context.Context, arg UpdateUserTrustParams
 		&i.LastActiveAt,
 		&i.CreatedAt,
 		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
 	)
 	return i, err
 }

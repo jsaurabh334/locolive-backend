@@ -125,9 +125,25 @@ func (server *Server) getStats(ctx *gin.Context) {
 		return
 	}
 
+	// Fetch Analytics (North Star)
+    retention, err := server.store.GetStreakRetentionStats(ctx)
+    if err != nil {
+        // Log but don't fail, maybe just return zeroes
+    }
+    engagement, err := server.store.GetEngagementStats(ctx)
+    if err != nil {}
+    conversion, err := server.store.GetConversionStats(ctx)
+    if err != nil {}
+
 	response := gin.H{
 		"users":   userStats,
 		"stories": storyStats,
+        "analytics": gin.H{
+            "retention_rate_3d": retention.RetentionRate,
+            "retained_users_count": retention.RetainedUsersCount,
+            "weekly_stories_per_user": engagement.AvgStoriesPerUserWeekly,
+            "crossing_conversion_rate": conversion.CrossingConversionRate,
+        },
 	}
 
 	// Cache for 1 minute

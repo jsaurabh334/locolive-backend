@@ -45,5 +45,9 @@ func (server *Server) updateProfile(ctx *gin.Context) {
 		return
 	}
 
+	// Invalidate profile cache
+	cacheKey := "profile:" + authPayload.ID.String()
+	server.redis.Del(ctx, cacheKey)
+
 	ctx.JSON(http.StatusOK, newUserResponse(user))
 }

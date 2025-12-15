@@ -71,7 +71,7 @@ func (server *Server) createUser(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, newUserResponse(user))
+	ctx.JSON(http.StatusCreated, newUserResponse(user))
 }
 
 type loginUserRequest struct {

@@ -12,10 +12,29 @@ INSERT INTO crossings (
 SELECT c.* FROM crossings c
 JOIN users u1 ON c.user_id_1 = u1.id
 JOIN users u2 ON c.user_id_2 = u2.id
-WHERE (c.user_id_1 = $1 OR c.user_id_2 = $1)
-AND u1.is_ghost_mode = false
-AND u2.is_ghost_mode = false
+WHERE 
+  (c.user_id_1 = $1 OR c.user_id_2 = $1)
+  -- Filter out ghost mode users (other user)
+  AND (
+    (c.user_id_1 = $1 AND u2.is_ghost_mode = false) OR
+    (c.user_id_2 = $1 AND u1.is_ghost_mode = false)
+  )
+  -- strict streak visibility rule
+  AND (
+    (c.user_id_1 = $1 AND DATE(u2.last_active_at) >= CURRENT_DATE - INTERVAL '1 day') OR
+    (c.user_id_2 = $1 AND DATE(u1.last_active_at) >= CURRENT_DATE - INTERVAL '1 day')
+  )
+  -- Shadow Ban Filter
+  AND (
+    (c.user_id_1 = $1 AND u2.is_shadow_banned = false) OR
+    (c.user_id_2 = $1 AND u1.is_shadow_banned = false)
+  )
 ORDER BY c.occurred_at DESC;
+
+-- name: CountCrossingsToday :one
+SELECT COUNT(*) FROM crossings
+WHERE (user_id_1 = $1 OR user_id_2 = $1)
+AND occurred_at >= CURRENT_DATE;
 
 -- name: FindPotentialCrossings :many
 SELECT 
@@ -32,5 +51,6 @@ AND l1.time_bucket >= @min_time::timestamptz
 AND l1.time_bucket < @max_time::timestamptz
 AND u1.is_ghost_mode = false
 AND u2.is_ghost_mode = false
+AND u1.is_shadow_banned = false
+AND u2.is_shadow_banned = false
 GROUP BY l1.user_id, l2.user_id, l1.geohash, l1.time_bucket;
-

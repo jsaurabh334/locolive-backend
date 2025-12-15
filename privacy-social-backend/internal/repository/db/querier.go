@@ -12,7 +12,9 @@ import (
 
 type Querier interface {
 	BanUser(ctx context.Context, arg BanUserParams) (User, error)
+	BoostUser(ctx context.Context, arg BoostUserParams) (User, error)
 	CountConnectionRequestsToday(ctx context.Context, requesterID uuid.UUID) (int64, error)
+	CountCrossingsToday(ctx context.Context, userID1 uuid.UUID) (int64, error)
 	CountStoryReactions(ctx context.Context, storyID uuid.UUID) (int64, error)
 	CountStoryViews(ctx context.Context, storyID uuid.UUID) (int64, error)
 	CountUnreadNotifications(ctx context.Context, userID uuid.UUID) (int64, error)
@@ -44,19 +46,29 @@ type Querier interface {
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 	FindPotentialCrossings(ctx context.Context, arg FindPotentialCrossingsParams) ([]FindPotentialCrossingsRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
+	// Newest third
+	// Get stories from connected users (not limited by radius)
+	GetConnectionStories(ctx context.Context, userID uuid.UUID) ([]GetConnectionStoriesRow, error)
+	GetConversionStats(ctx context.Context) (GetConversionStatsRow, error)
 	GetCrossingsForUser(ctx context.Context, userID1 uuid.UUID) ([]Crossing, error)
+	GetEngagementStats(ctx context.Context) (GetEngagementStatsRow, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	// Get stories within a bounding box for map view
 	GetStoriesInBounds(ctx context.Context, arg GetStoriesInBoundsParams) ([]GetStoriesInBoundsRow, error)
-	GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]Story, error)
+	GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]GetStoriesWithinRadiusRow, error)
 	GetStoryByID(ctx context.Context, id uuid.UUID) (Story, error)
 	GetStoryReactions(ctx context.Context, storyID uuid.UUID) ([]GetStoryReactionsRow, error)
 	// Admin: Story stats
 	GetStoryStats(ctx context.Context) (GetStoryStatsRow, error)
 	// Only accessible by story owner
 	GetStoryViewers(ctx context.Context, storyID uuid.UUID) ([]GetStoryViewersRow, error)
+	GetStreakRetentionStats(ctx context.Context) (GetStreakRetentionStatsRow, error)
+	// Get user's activity status and visibility
+	GetUserActivityStatus(ctx context.Context, id uuid.UUID) (GetUserActivityStatusRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByPhone(ctx context.Context, phone string) (User, error)
+	// Get public user profile information
+	GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProfileRow, error)
 	GetUserStats(ctx context.Context) (GetUserStatsRow, error)
 	// Admin: List all stories
 	ListAllStories(ctx context.Context, arg ListAllStoriesParams) ([]ListAllStoriesRow, error)
@@ -74,6 +86,8 @@ type Querier interface {
 	// Privacy Features
 	ToggleGhostMode(ctx context.Context, arg ToggleGhostModeParams) (User, error)
 	UpdateConnectionStatus(ctx context.Context, arg UpdateConnectionStatusParams) (Connection, error)
+	// Updates last_active_at and calculates activity streak
+	UpdateUserActivity(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateUserTrust(ctx context.Context, arg UpdateUserTrustParams) (User, error)
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mmcloughlin/geohash"
+	"github.com/rs/zerolog/log"
 
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
@@ -37,6 +38,21 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 		hash = hash[:locationPrecision]
 	}
 
+    // Safety Check: Fake GPS
+    val := server.safety.ValidateUserMovement(ctx, authPayload.ID.String(), req.Latitude, req.Longitude)
+    if !val.Allowed {
+        if val.ShouldBan {
+            server.store.BanUser(ctx, db.BanUserParams{
+                ID:             authPayload.ID,
+                IsShadowBanned: true,
+            })
+            log.Warn().Str("user_id", authPayload.ID.String()).Msg("User shadow-banned for fake GPS")
+        }
+        // Return success to maintain illusion, but do NOT save the fake location 
+        ctx.JSON(http.StatusOK, gin.H{"status": "updated"})
+        return
+    }
+
 	// Privacy: Time Bucket
 	now := time.Now().UTC()
 	bucketTime := now.Truncate(bucketDuration)
@@ -62,6 +78,13 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
+	}
+
+	// Update user activity (for visibility system)
+	_, err = server.store.UpdateUserActivity(ctx, authPayload.ID)
+	if err != nil {
+		// Log error but don't fail the request
+		log.Error().Err(err).Msg("Failed to update user activity on location ping")
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"status": "updated"})

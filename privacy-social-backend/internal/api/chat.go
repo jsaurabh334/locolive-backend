@@ -1,8 +1,13 @@
 package api
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,6 +24,8 @@ var upgrader = websocket.Upgrader{
 		return true // Allow all for dev
 	},
 }
+
+const chatCacheTTL = 10 * time.Minute
 
 // Basic WebSocket implementation (No full Hub struct for brevity, just per-connection loop)
 // For production, use a proper Hub to manage connections.
@@ -67,14 +74,51 @@ func (server *Server) getChatHistory(ctx *gin.Context) {
     targetID, _ := uuid.Parse(targetIDStr)
     authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
     
-    msgs, err := server.store.ListMessages(ctx, db.ListMessagesParams{
-        SenderID: authPayload.ID,
-        ReceiverID: targetID,
-    })
+    // Create cache key with sorted IDs for consistency
+    ids := []string{authPayload.ID.String(), targetID.String()}
+    sort.Strings(ids)
+    cacheKey := "messages:" + ids[0] + ":" + ids[1]
+    
+    // Try Redis cache first
+    cachedData, err := server.redis.Get(context.Background(), cacheKey).Result()
+    if err == nil && cachedData != "" {
+        ctx.Header("X-Cache", "HIT")
+        ctx.Data(http.StatusOK, "application/json", []byte(cachedData))
+        return
+    }
+    
+	// Check for mutual connection
+	conn, err := server.store.GetConnection(ctx, db.GetConnectionParams{
+		RequesterID: authPayload.ID,
+		TargetID:    targetID,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusForbidden, gin.H{"error": "Chat is locked. You must be connected to chat."})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	if conn.Status != "accepted" {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Chat is locked. Connection must be accepted."})
+		return
+	}
+
+	msgs, err := server.store.ListMessages(ctx, db.ListMessagesParams{
+		SenderID:   authPayload.ID,
+		ReceiverID: targetID,
+	})
     if err != nil {
         ctx.JSON(http.StatusInternalServerError, errorResponse(err))
         return
     }
     
+    // Cache the result
+    responseJSON, _ := json.Marshal(msgs)
+    server.redis.Set(context.Background(), cacheKey, responseJSON, chatCacheTTL)
+    
+    ctx.Header("X-Cache", "MISS")
     ctx.JSON(http.StatusOK, msgs)
 }

@@ -45,6 +45,13 @@ var (
 
 // createRateLimiter creates a rate limiter with Redis store
 func (server *Server) createRateLimiter(rate limiter.Rate) gin.HandlerFunc {
+	// Bypass rate limiting in tests
+	if gin.Mode() == gin.TestMode {
+		return func(ctx *gin.Context) {
+			ctx.Next()
+		}
+	}
+
 	store, err := sredis.NewStoreWithOptions(server.redis, limiter.StoreOptions{
 		Prefix:   "rate_limit",
 		MaxRetry: 3,

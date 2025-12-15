@@ -39,6 +39,13 @@ func (worker *CleanupWorker) detectCrossings() {
 	}
     
     for _, c := range crossings {
+        // Daily Limit Check (Max 50 crossings/day)
+        count, err := worker.store.CountCrossingsToday(ctx, c.User1)
+        if err == nil && count >= 50 {
+             // Limit exceeded, skip silently
+             continue
+        }
+
         // Create Crossing Record
         crossing, err := worker.store.CreateCrossing(ctx, db.CreateCrossingParams{
             UserID1: c.User1,
@@ -47,8 +54,7 @@ func (worker *CleanupWorker) detectCrossings() {
             OccurredAt: c.TimeBucket,
         })
         if err != nil {
-            // log.Printf("failed to create crossing: %v\", err)
-            // duplicate likely, skip
+            // Duplicate likely, skip
             continue
         }
         
