@@ -62,6 +62,8 @@ func (server *Server) setupRouter() {
 	authRoutes.PUT("/profile", server.updateProfile)
 	authRoutes.POST("/reports", server.createReport)
 	authRoutes.POST("/profile/boost", server.boostProfile)
+	authRoutes.PUT("/account/email", server.updateUserEmail)
+	authRoutes.PUT("/account/password", server.updateUserPassword)
 
 	// Privacy features
 	authRoutes.GET("/privacy", server.getPrivacySettings)

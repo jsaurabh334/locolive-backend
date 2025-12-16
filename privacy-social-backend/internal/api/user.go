@@ -46,22 +46,6 @@ func newUserResponse(user db.User) userResponse {
 		BannerUrl:         user.BannerUrl.String,
 		Theme:             user.Theme.String,
 		ProfileVisibility: user.ProfileVisibility.String,
-	PermissionLevel   string    `json:"permission_level,omitempty"`
-	Email             string    `json:"email"`
-	CreatedAt         time.Time `json:"created_at"`
-}
-
-func newUserResponse(user db.User) userResponse {
-	return userResponse{
-		ID:                user.ID,
-		Phone:             user.Phone,
-		Username:          user.Username,
-		FullName:          user.FullName,
-		Bio:               user.Bio.String,
-		AvatarUrl:         user.AvatarUrl.String,
-		BannerUrl:         user.BannerUrl.String,
-		Theme:             user.Theme.String,
-		ProfileVisibility: user.ProfileVisibility.String,
 		Email:             user.Email.String,
 		CreatedAt:         user.CreatedAt,
 	}
