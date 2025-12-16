@@ -10,6 +10,7 @@ import (
 	"github.com/lib/pq"
 
 	"privacy-social-backend/internal/repository/db"
+	"privacy-social-backend/internal/token"
 	"privacy-social-backend/internal/util"
 )
 
@@ -30,6 +31,7 @@ type userResponse struct {
 	BannerUrl         string    `json:"banner_url"`
 	Theme             string    `json:"theme"`
 	ProfileVisibility string    `json:"profile_visibility"`
+	Email             string    `json:"email"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 
@@ -44,6 +46,23 @@ func newUserResponse(user db.User) userResponse {
 		BannerUrl:         user.BannerUrl.String,
 		Theme:             user.Theme.String,
 		ProfileVisibility: user.ProfileVisibility.String,
+	PermissionLevel   string    `json:"permission_level,omitempty"`
+	Email             string    `json:"email"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+func newUserResponse(user db.User) userResponse {
+	return userResponse{
+		ID:                user.ID,
+		Phone:             user.Phone,
+		Username:          user.Username,
+		FullName:          user.FullName,
+		Bio:               user.Bio.String,
+		AvatarUrl:         user.AvatarUrl.String,
+		BannerUrl:         user.BannerUrl.String,
+		Theme:             user.Theme.String,
+		ProfileVisibility: user.ProfileVisibility.String,
+		Email:             user.Email.String,
 		CreatedAt:         user.CreatedAt,
 	}
 }
@@ -178,4 +197,81 @@ func (server *Server) searchUsers(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, users)
+}
+
+type updateEmailRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+func (server *Server) updateUserEmail(ctx *gin.Context) {
+	var req updateEmailRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	user, err := server.store.UpdateUserEmail(ctx, db.UpdateUserEmailParams{
+		ID:    payload.UserID,
+		Email: sql.NullString{String: req.Email, Valid: true},
+	})
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code.Name() {
+			case "unique_violation":
+				ctx.JSON(http.StatusForbidden, errorResponse(err))
+				return
+			}
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"email": user.Email.String})
+}
+
+type updatePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required,min=6"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
+}
+
+func (server *Server) updateUserPassword(ctx *gin.Context) {
+	var req updatePasswordRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	// Fetch user to verify current password
+	user, err := server.store.GetUserByID(ctx, payload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	err = util.CheckPassword(req.CurrentPassword, user.PasswordHash)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect current password"})
+		return
+	}
+
+	hashedPassword, err := util.HashPassword(req.NewPassword)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	err = server.store.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:           payload.UserID,
+		PasswordHash: hashedPassword,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "password updated successfully"})
 }
