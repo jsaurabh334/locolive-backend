@@ -34,5 +34,40 @@ SELECT
 FROM connections c
 JOIN users u ON (u.id = c.requester_id OR u.id = c.target_id)
 WHERE (c.requester_id = $1 OR c.target_id = $1)
-  AND c.status = 'accepted'
-  AND u.id != $1;
+  AND u.id != $1
+  AND c.status = 'accepted';
+
+-- name: ListPendingRequests :many
+SELECT 
+    c.requester_id, 
+    c.target_id, 
+    c.status, 
+    c.created_at,
+    u.username,
+    u.full_name,
+    u.avatar_url
+FROM connections c
+JOIN users u ON c.requester_id = u.id
+WHERE c.target_id = $1 
+  AND c.status = 'pending'
+ORDER BY c.created_at DESC;
+
+-- name: ListSentConnectionRequests :many
+SELECT 
+    c.requester_id, 
+    c.target_id, 
+    c.status, 
+    c.created_at,
+    u.username,
+    u.full_name,
+    u.avatar_url
+FROM connections c
+JOIN users u ON c.target_id = u.id
+WHERE c.requester_id = $1 
+  AND c.status = 'pending'
+ORDER BY c.created_at DESC;
+
+-- name: DeleteConnection :exec
+DELETE FROM connections
+WHERE (requester_id = $1 AND target_id = $2)
+   OR (requester_id = $2 AND target_id = $1);

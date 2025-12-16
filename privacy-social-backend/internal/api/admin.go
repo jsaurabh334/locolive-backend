@@ -66,7 +66,7 @@ func (server *Server) banUser(ctx *gin.Context) {
 	userID, _ := uuid.Parse(req.UserID)
 
 	user, err := server.store.BanUser(ctx, db.BanUserParams{
-		ID:              userID,
+		ID:             userID,
 		IsShadowBanned: req.Ban,
 	})
 	if err != nil {
@@ -113,7 +113,7 @@ func (server *Server) getStats(ctx *gin.Context) {
 	}
 
 	// Cache miss - query database
-	userStats, err := server.store.GetUserStats(ctx)
+	userStats, err := server.store.GetSystemStats(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
@@ -126,24 +126,26 @@ func (server *Server) getStats(ctx *gin.Context) {
 	}
 
 	// Fetch Analytics (North Star)
-    retention, err := server.store.GetStreakRetentionStats(ctx)
-    if err != nil {
-        // Log but don't fail, maybe just return zeroes
-    }
-    engagement, err := server.store.GetEngagementStats(ctx)
-    if err != nil {}
-    conversion, err := server.store.GetConversionStats(ctx)
-    if err != nil {}
+	retention, err := server.store.GetStreakRetentionStats(ctx)
+	if err != nil {
+		// Log but don't fail, maybe just return zeroes
+	}
+	engagement, err := server.store.GetEngagementStats(ctx)
+	if err != nil {
+	}
+	conversion, err := server.store.GetConversionStats(ctx)
+	if err != nil {
+	}
 
 	response := gin.H{
 		"users":   userStats,
 		"stories": storyStats,
-        "analytics": gin.H{
-            "retention_rate_3d": retention.RetentionRate,
-            "retained_users_count": retention.RetainedUsersCount,
-            "weekly_stories_per_user": engagement.AvgStoriesPerUserWeekly,
-            "crossing_conversion_rate": conversion.CrossingConversionRate,
-        },
+		"analytics": gin.H{
+			"retention_rate_3d":        retention.RetentionRate,
+			"retained_users_count":     retention.RetainedUsersCount,
+			"weekly_stories_per_user":  engagement.AvgStoriesPerUserWeekly,
+			"crossing_conversion_rate": conversion.CrossingConversionRate,
+		},
 	}
 
 	// Cache for 1 minute

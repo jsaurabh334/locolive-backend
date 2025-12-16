@@ -18,26 +18,28 @@ INSERT INTO stories (
   user_id,
   media_url,
   media_type,
+  caption,
   geohash,
   geom,
   is_anonymous,
   is_premium,
   expires_at
 ) VALUES (
-  $1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5::float8, $6::float8), 4326), $7, $8, $9
+  $1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6::float8, $7::float8), 4326), $8, $9, $10
 ) RETURNING id, user_id, media_url, media_type, thumbnail_url, caption, geohash, geom, visibility, expires_at, created_at, is_anonymous, is_premium
 `
 
 type CreateStoryParams struct {
-	UserID      uuid.UUID    `json:"user_id"`
-	MediaUrl    string       `json:"media_url"`
-	MediaType   string       `json:"media_type"`
-	Geohash     string       `json:"geohash"`
-	Lng         float64      `json:"lng"`
-	Lat         float64      `json:"lat"`
-	IsAnonymous bool         `json:"is_anonymous"`
-	IsPremium   sql.NullBool `json:"is_premium"`
-	ExpiresAt   time.Time    `json:"expires_at"`
+	UserID      uuid.UUID      `json:"user_id"`
+	MediaUrl    string         `json:"media_url"`
+	MediaType   string         `json:"media_type"`
+	Caption     sql.NullString `json:"caption"`
+	Geohash     string         `json:"geohash"`
+	Lng         float64        `json:"lng"`
+	Lat         float64        `json:"lat"`
+	IsAnonymous bool           `json:"is_anonymous"`
+	IsPremium   sql.NullBool   `json:"is_premium"`
+	ExpiresAt   time.Time      `json:"expires_at"`
 }
 
 func (q *Queries) CreateStory(ctx context.Context, arg CreateStoryParams) (Story, error) {
@@ -45,6 +47,7 @@ func (q *Queries) CreateStory(ctx context.Context, arg CreateStoryParams) (Story
 		arg.UserID,
 		arg.MediaUrl,
 		arg.MediaType,
+		arg.Caption,
 		arg.Geohash,
 		arg.Lng,
 		arg.Lat,
@@ -93,7 +96,6 @@ func (q *Queries) DeleteStory(ctx context.Context, id uuid.UUID) error {
 }
 
 const getConnectionStories = `-- name: GetConnectionStories :many
-
 SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s.geohash, s.geom, s.visibility, s.expires_at, s.created_at, s.is_anonymous, s.is_premium, u.username, u.avatar_url, u.is_premium
 FROM stories s
 JOIN users u ON s.user_id = u.id
@@ -129,7 +131,6 @@ type GetConnectionStoriesRow struct {
 	IsPremium_2  sql.NullBool      `json:"is_premium_2"`
 }
 
-// Newest third
 // Get stories from connected users (not limited by radius)
 func (q *Queries) GetConnectionStories(ctx context.Context, userID uuid.UUID) ([]GetConnectionStoriesRow, error) {
 	rows, err := q.db.QueryContext(ctx, getConnectionStories, userID)
@@ -177,18 +178,41 @@ FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE s.geom && ST_MakeEnvelope($1::float8, $2::float8, $3::float8, $4::float8, 4326)
 AND s.expires_at > now()
-AND u.is_ghost_mode = false
 AND u.is_shadow_banned = false
 AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+AND NOT EXISTS (
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = $5 AND bu.blocked_id = s.user_id)
+       OR (bu.blocker_id = s.user_id AND bu.blocked_id = $5)
+)
+AND (
+    s.user_id = $5
+    OR
+    EXISTS (
+        SELECT 1 FROM privacy_settings ps 
+        WHERE ps.user_id = s.user_id 
+        AND ps.show_location = true
+        AND (
+            ps.who_can_see_stories = 'everyone'
+            OR
+            (ps.who_can_see_stories = 'connections' AND EXISTS (
+                 SELECT 1 FROM connections c 
+                 WHERE (c.requester_id = $5 AND c.target_id = s.user_id OR c.requester_id = s.user_id AND c.target_id = $5)
+                 AND c.status = 'accepted'
+            ))
+        )
+    )
+)
 ORDER BY s.created_at DESC
 LIMIT 100
 `
 
 type GetStoriesInBoundsParams struct {
-	West  float64 `json:"west"`
-	South float64 `json:"south"`
-	East  float64 `json:"east"`
-	North float64 `json:"north"`
+	West          float64   `json:"west"`
+	South         float64   `json:"south"`
+	East          float64   `json:"east"`
+	North         float64   `json:"north"`
+	CurrentUserID uuid.UUID `json:"current_user_id"`
 }
 
 type GetStoriesInBoundsRow struct {
@@ -216,6 +240,7 @@ func (q *Queries) GetStoriesInBounds(ctx context.Context, arg GetStoriesInBounds
 		arg.South,
 		arg.East,
 		arg.North,
+		arg.CurrentUserID,
 	)
 	if err != nil {
 		return nil, err
@@ -259,26 +284,52 @@ SELECT s.id, s.user_id, s.media_url, s.media_type, s.thumbnail_url, s.caption, s
 FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE 
-  ST_DWithin(
+    ST_DWithin(
     s.geom::geography,
     ST_MakePoint($1::float8, $2::float8)::geography,
     $3
   )
   AND s.expires_at > now()
-  AND (s.is_anonymous = false OR s.user_id = $4) -- Only show non-anonymous or own stories in feed (logic choice)
-  AND u.is_ghost_mode = false -- Hide ghost mode users
+  AND (s.is_anonymous = false OR s.user_id = $4)
   AND u.is_shadow_banned = false
-  -- Strict Streak Rule: User must have posted today or yesterday
+  -- Strict Streak Rule
   AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
-  -- Block Rule: Exclude if blocked by either party
+  -- Block Logic: Exclude if blocked by either party (using blocked_users table)
   AND NOT EXISTS (
-    SELECT 1 FROM connections c
-    WHERE (c.requester_id = $4 AND c.target_id = s.user_id AND c.status = 'blocked')
-       OR (c.requester_id = s.user_id AND c.target_id = $4 AND c.status = 'blocked')
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = $4 AND bu.blocked_id = s.user_id)
+       OR (bu.blocker_id = s.user_id AND bu.blocked_id = $4)
+  )
+  -- Privacy Settings Logic --
+  AND (
+    -- Case 1: My own stories (always visible)
+    s.user_id = $4
+    OR
+    (
+      -- Case 2: User is NOT in Ghost Mode (using privacy_settings)
+      EXISTS (
+        SELECT 1 FROM privacy_settings ps 
+        WHERE ps.user_id = s.user_id 
+        AND ps.show_location = true -- If false (Ghost Mode), don't show in radius feed
+        AND (
+          -- Visibility Rules
+          ps.who_can_see_stories = 'everyone'
+          OR
+          (ps.who_can_see_stories = 'connections' AND EXISTS (
+             SELECT 1 FROM connections c 
+             WHERE (c.requester_id = $4 AND c.target_id = s.user_id OR c.requester_id = s.user_id AND c.target_id = $4)
+             AND c.status = 'accepted'
+          ))
+        )
+      )
+      -- Fallback: If no privacy settings exist, assume strictly public/default behaviour? 
+      -- Ideally, every user has settings. If not, default to 'everyone' + 'show_location'.
+      -- But simpler to rely on LEFT JOIN or EXISTS logic assuming rows exist.
+    )
   )
 ORDER BY 
-  (u.boost_expires_at > now()) DESC NULLS LAST, -- Live boost first
-  u.is_premium DESC,                            -- Premium second
+  (u.boost_expires_at > now()) DESC NULLS LAST,
+  u.is_premium DESC,
   s.created_at DESC
 `
 

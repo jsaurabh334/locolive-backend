@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -18,7 +20,7 @@ INSERT INTO messages (
   content
 ) VALUES (
   $1, $2, $3
-) RETURNING id, sender_id, receiver_id, content, is_read, created_at
+) RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at
 `
 
 type CreateMessageParams struct {
@@ -37,8 +39,66 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.Content,
 		&i.IsRead,
 		&i.CreatedAt,
+		&i.ReadAt,
 	)
 	return i, err
+}
+
+const createMessageReaction = `-- name: CreateMessageReaction :one
+INSERT INTO message_reactions (message_id, user_id, emoji)
+VALUES ($1, $2, $3)
+ON CONFLICT (message_id, user_id, emoji) DO NOTHING
+RETURNING id, message_id, user_id, emoji, created_at
+`
+
+type CreateMessageReactionParams struct {
+	MessageID uuid.UUID `json:"message_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Emoji     string    `json:"emoji"`
+}
+
+func (q *Queries) CreateMessageReaction(ctx context.Context, arg CreateMessageReactionParams) (MessageReaction, error) {
+	row := q.db.QueryRowContext(ctx, createMessageReaction, arg.MessageID, arg.UserID, arg.Emoji)
+	var i MessageReaction
+	err := row.Scan(
+		&i.ID,
+		&i.MessageID,
+		&i.UserID,
+		&i.Emoji,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteMessage = `-- name: DeleteMessage :exec
+DELETE FROM messages
+WHERE id = $1 AND sender_id = $2
+`
+
+type DeleteMessageParams struct {
+	ID       uuid.UUID `json:"id"`
+	SenderID uuid.UUID `json:"sender_id"`
+}
+
+func (q *Queries) DeleteMessage(ctx context.Context, arg DeleteMessageParams) error {
+	_, err := q.db.ExecContext(ctx, deleteMessage, arg.ID, arg.SenderID)
+	return err
+}
+
+const deleteMessageReaction = `-- name: DeleteMessageReaction :exec
+DELETE FROM message_reactions
+WHERE message_id = $1 AND user_id = $2 AND emoji = $3
+`
+
+type DeleteMessageReactionParams struct {
+	MessageID uuid.UUID `json:"message_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Emoji     string    `json:"emoji"`
+}
+
+func (q *Queries) DeleteMessageReaction(ctx context.Context, arg DeleteMessageReactionParams) error {
+	_, err := q.db.ExecContext(ctx, deleteMessageReaction, arg.MessageID, arg.UserID, arg.Emoji)
+	return err
 }
 
 const deleteOldMessages = `-- name: DeleteOldMessages :exec
@@ -52,8 +112,76 @@ func (q *Queries) DeleteOldMessages(ctx context.Context) error {
 	return err
 }
 
+const getMessage = `-- name: GetMessage :one
+SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at FROM messages WHERE id = $1
+`
+
+func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error) {
+	row := q.db.QueryRowContext(ctx, getMessage, id)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Content,
+		&i.IsRead,
+		&i.CreatedAt,
+		&i.ReadAt,
+	)
+	return i, err
+}
+
+const getMessageReactions = `-- name: GetMessageReactions :many
+SELECT mr.id, mr.message_id, mr.user_id, mr.emoji, mr.created_at, u.username, u.avatar_url
+FROM message_reactions mr
+JOIN users u ON mr.user_id = u.id
+WHERE mr.message_id = $1
+ORDER BY mr.created_at ASC
+`
+
+type GetMessageReactionsRow struct {
+	ID        uuid.UUID      `json:"id"`
+	MessageID uuid.UUID      `json:"message_id"`
+	UserID    uuid.UUID      `json:"user_id"`
+	Emoji     string         `json:"emoji"`
+	CreatedAt time.Time      `json:"created_at"`
+	Username  string         `json:"username"`
+	AvatarUrl sql.NullString `json:"avatar_url"`
+}
+
+func (q *Queries) GetMessageReactions(ctx context.Context, messageID uuid.UUID) ([]GetMessageReactionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getMessageReactions, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMessageReactionsRow
+	for rows.Next() {
+		var i GetMessageReactionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.MessageID,
+			&i.UserID,
+			&i.Emoji,
+			&i.CreatedAt,
+			&i.Username,
+			&i.AvatarUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMessages = `-- name: ListMessages :many
-SELECT id, sender_id, receiver_id, content, is_read, created_at FROM messages
+SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at FROM messages
 WHERE (sender_id = $1 AND receiver_id = $2)
    OR (sender_id = $2 AND receiver_id = $1)
 ORDER BY created_at ASC
@@ -80,6 +208,7 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.Content,
 			&i.IsRead,
 			&i.CreatedAt,
+			&i.ReadAt,
 		); err != nil {
 			return nil, err
 		}
@@ -92,4 +221,75 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 		return nil, err
 	}
 	return items, nil
+}
+
+const markConversationRead = `-- name: MarkConversationRead :exec
+UPDATE messages
+SET read_at = NOW()
+WHERE receiver_id = $1 AND sender_id = $2 AND read_at IS NULL
+`
+
+type MarkConversationReadParams struct {
+	ReceiverID uuid.UUID `json:"receiver_id"`
+	SenderID   uuid.UUID `json:"sender_id"`
+}
+
+func (q *Queries) MarkConversationRead(ctx context.Context, arg MarkConversationReadParams) error {
+	_, err := q.db.ExecContext(ctx, markConversationRead, arg.ReceiverID, arg.SenderID)
+	return err
+}
+
+const markMessageRead = `-- name: MarkMessageRead :one
+UPDATE messages
+SET read_at = NOW()
+WHERE id = $1 AND receiver_id = $2 AND read_at IS NULL
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at
+`
+
+type MarkMessageReadParams struct {
+	ID         uuid.UUID `json:"id"`
+	ReceiverID uuid.UUID `json:"receiver_id"`
+}
+
+func (q *Queries) MarkMessageRead(ctx context.Context, arg MarkMessageReadParams) (Message, error) {
+	row := q.db.QueryRowContext(ctx, markMessageRead, arg.ID, arg.ReceiverID)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Content,
+		&i.IsRead,
+		&i.CreatedAt,
+		&i.ReadAt,
+	)
+	return i, err
+}
+
+const updateMessage = `-- name: UpdateMessage :one
+UPDATE messages
+SET content = $3
+WHERE id = $1 AND sender_id = $2
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at
+`
+
+type UpdateMessageParams struct {
+	ID       uuid.UUID `json:"id"`
+	SenderID uuid.UUID `json:"sender_id"`
+	Content  string    `json:"content"`
+}
+
+func (q *Queries) UpdateMessage(ctx context.Context, arg UpdateMessageParams) (Message, error) {
+	row := q.db.QueryRowContext(ctx, updateMessage, arg.ID, arg.SenderID, arg.Content)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Content,
+		&i.IsRead,
+		&i.CreatedAt,
+		&i.ReadAt,
+	)
+	return i, err
 }

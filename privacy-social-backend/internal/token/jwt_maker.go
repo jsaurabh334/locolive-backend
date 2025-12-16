@@ -24,14 +24,15 @@ func NewJWTMaker(secretKey string) (Maker, error) {
 }
 
 // CreateToken creates a new token for a specific username and duration
-func (maker *JWTMaker) CreateToken(username string, duration time.Duration) (string, *Payload, error) {
-	payload, err := NewPayload(username, duration)
+func (maker *JWTMaker) CreateToken(username string, userID uuid.UUID, duration time.Duration) (string, *Payload, error) {
+	payload, err := NewPayload(username, userID, duration)
 	if err != nil {
 		return "", payload, err
 	}
 
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"id":         payload.ID.String(),
+		"user_id":    payload.UserID.String(),
 		"username":   payload.Username,
 		"issued_at":  payload.IssuedAt.Format(time.RFC3339Nano),
 		"expired_at": payload.ExpiredAt.Format(time.RFC3339Nano),
@@ -71,6 +72,16 @@ func (maker *JWTMaker) VerifyToken(token string) (*Payload, error) {
 		return nil, ErrInvalidToken
 	}
 
+	// Parse UserID
+	userIDStr, ok := claims["user_id"].(string)
+	if !ok {
+		return nil, ErrInvalidToken
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+
 	// Parse username
 	username, ok := claims["username"].(string)
 	if !ok {
@@ -99,6 +110,7 @@ func (maker *JWTMaker) VerifyToken(token string) (*Payload, error) {
 
 	payload := &Payload{
 		ID:        id,
+		UserID:    userID,
 		Username:  username,
 		IssuedAt:  issuedAt,
 		ExpiredAt: expiredAt,

@@ -3,13 +3,14 @@ INSERT INTO stories (
   user_id,
   media_url,
   media_type,
+  caption,
   geohash,
   geom,
   is_anonymous,
   is_premium,
   expires_at
 ) VALUES (
-  @user_id, @media_url, @media_type, @geohash, ST_SetSRID(ST_MakePoint(@lng::float8, @lat::float8), 4326), @is_anonymous, @is_premium, @expires_at
+  @user_id, @media_url, @media_type, @caption, @geohash, ST_SetSRID(ST_MakePoint(@lng::float8, @lat::float8), 4326), @is_anonymous, @is_premium, @expires_at
 ) RETURNING *;
 
 -- name: GetStoryByID :one
@@ -21,27 +22,53 @@ SELECT s.*, u.username, u.avatar_url, u.is_premium
 FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE 
-  ST_DWithin(
+    ST_DWithin(
     s.geom::geography,
     ST_MakePoint(@lng::float8, @lat::float8)::geography,
     @radius_meters
   )
   AND s.expires_at > now()
-  AND (s.is_anonymous = false OR s.user_id = @user_id) -- Only show non-anonymous or own stories in feed (logic choice)
-  AND u.is_ghost_mode = false -- Hide ghost mode users
+  AND (s.is_anonymous = false OR s.user_id = @user_id)
   AND u.is_shadow_banned = false
-  -- Strict Streak Rule: User must have posted today or yesterday
+  -- Strict Streak Rule
   AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
-  -- Block Rule: Exclude if blocked by either party
+  -- Block Logic: Exclude if blocked by either party (using blocked_users table)
   AND NOT EXISTS (
-    SELECT 1 FROM connections c
-    WHERE (c.requester_id = @user_id AND c.target_id = s.user_id AND c.status = 'blocked')
-       OR (c.requester_id = s.user_id AND c.target_id = @user_id AND c.status = 'blocked')
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = @user_id AND bu.blocked_id = s.user_id)
+       OR (bu.blocker_id = s.user_id AND bu.blocked_id = @user_id)
+  )
+  -- Privacy Settings Logic --
+  AND (
+    -- Case 1: My own stories (always visible)
+    s.user_id = @user_id
+    OR
+    (
+      -- Case 2: User is NOT in Ghost Mode (using privacy_settings)
+      EXISTS (
+        SELECT 1 FROM privacy_settings ps 
+        WHERE ps.user_id = s.user_id 
+        AND ps.show_location = true -- If false (Ghost Mode), don't show in radius feed
+        AND (
+          -- Visibility Rules
+          ps.who_can_see_stories = 'everyone'
+          OR
+          (ps.who_can_see_stories = 'connections' AND EXISTS (
+             SELECT 1 FROM connections c 
+             WHERE (c.requester_id = @user_id AND c.target_id = s.user_id OR c.requester_id = s.user_id AND c.target_id = @user_id)
+             AND c.status = 'accepted'
+          ))
+        )
+      )
+      -- Fallback: If no privacy settings exist, assume strictly public/default behaviour? 
+      -- Ideally, every user has settings. If not, default to 'everyone' + 'show_location'.
+      -- But simpler to rely on LEFT JOIN or EXISTS logic assuming rows exist.
+    )
   )
 ORDER BY 
-  (u.boost_expires_at > now()) DESC NULLS LAST, -- Live boost first
-  u.is_premium DESC,                            -- Premium second
-  s.created_at DESC;                            -- Newest third
+  (u.boost_expires_at > now()) DESC NULLS LAST,
+  u.is_premium DESC,
+  s.created_at DESC;
 
 -- name: GetConnectionStories :many
 -- Get stories from connected users (not limited by radius)
@@ -67,9 +94,31 @@ FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE s.geom && ST_MakeEnvelope(@west::float8, @south::float8, @east::float8, @north::float8, 4326)
 AND s.expires_at > now()
-AND u.is_ghost_mode = false
 AND u.is_shadow_banned = false
 AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+AND NOT EXISTS (
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = @current_user_id AND bu.blocked_id = s.user_id)
+       OR (bu.blocker_id = s.user_id AND bu.blocked_id = @current_user_id)
+)
+AND (
+    s.user_id = @current_user_id
+    OR
+    EXISTS (
+        SELECT 1 FROM privacy_settings ps 
+        WHERE ps.user_id = s.user_id 
+        AND ps.show_location = true
+        AND (
+            ps.who_can_see_stories = 'everyone'
+            OR
+            (ps.who_can_see_stories = 'connections' AND EXISTS (
+                 SELECT 1 FROM connections c 
+                 WHERE (c.requester_id = @current_user_id AND c.target_id = s.user_id OR c.requester_id = s.user_id AND c.target_id = @current_user_id)
+                 AND c.status = 'accepted'
+            ))
+        )
+    )
+)
 ORDER BY s.created_at DESC
 LIMIT 100;
 

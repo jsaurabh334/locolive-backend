@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -54,6 +55,22 @@ func (q *Queries) CreateConnectionRequest(ctx context.Context, arg CreateConnect
 	return i, err
 }
 
+const deleteConnection = `-- name: DeleteConnection :exec
+DELETE FROM connections
+WHERE (requester_id = $1 AND target_id = $2)
+   OR (requester_id = $2 AND target_id = $1)
+`
+
+type DeleteConnectionParams struct {
+	RequesterID uuid.UUID `json:"requester_id"`
+	TargetID    uuid.UUID `json:"target_id"`
+}
+
+func (q *Queries) DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error {
+	_, err := q.db.ExecContext(ctx, deleteConnection, arg.RequesterID, arg.TargetID)
+	return err
+}
+
 const getConnection = `-- name: GetConnection :one
 SELECT requester_id, target_id, status, created_at, updated_at FROM connections
 WHERE (requester_id = $1 AND target_id = $2)
@@ -88,8 +105,8 @@ SELECT
 FROM connections c
 JOIN users u ON (u.id = c.requester_id OR u.id = c.target_id)
 WHERE (c.requester_id = $1 OR c.target_id = $1)
-  AND c.status = 'accepted'
   AND u.id != $1
+  AND c.status = 'accepted'
 `
 
 type ListConnectionsRow struct {
@@ -110,6 +127,120 @@ func (q *Queries) ListConnections(ctx context.Context, requesterID uuid.UUID) ([
 		var i ListConnectionsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.Username,
+			&i.FullName,
+			&i.AvatarUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingRequests = `-- name: ListPendingRequests :many
+SELECT 
+    c.requester_id, 
+    c.target_id, 
+    c.status, 
+    c.created_at,
+    u.username,
+    u.full_name,
+    u.avatar_url
+FROM connections c
+JOIN users u ON c.requester_id = u.id
+WHERE c.target_id = $1 
+  AND c.status = 'pending'
+ORDER BY c.created_at DESC
+`
+
+type ListPendingRequestsRow struct {
+	RequesterID uuid.UUID        `json:"requester_id"`
+	TargetID    uuid.UUID        `json:"target_id"`
+	Status      ConnectionStatus `json:"status"`
+	CreatedAt   time.Time        `json:"created_at"`
+	Username    string           `json:"username"`
+	FullName    string           `json:"full_name"`
+	AvatarUrl   sql.NullString   `json:"avatar_url"`
+}
+
+func (q *Queries) ListPendingRequests(ctx context.Context, targetID uuid.UUID) ([]ListPendingRequestsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingRequests, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingRequestsRow
+	for rows.Next() {
+		var i ListPendingRequestsRow
+		if err := rows.Scan(
+			&i.RequesterID,
+			&i.TargetID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.Username,
+			&i.FullName,
+			&i.AvatarUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSentConnectionRequests = `-- name: ListSentConnectionRequests :many
+SELECT 
+    c.requester_id, 
+    c.target_id, 
+    c.status, 
+    c.created_at,
+    u.username,
+    u.full_name,
+    u.avatar_url
+FROM connections c
+JOIN users u ON c.target_id = u.id
+WHERE c.requester_id = $1 
+  AND c.status = 'pending'
+ORDER BY c.created_at DESC
+`
+
+type ListSentConnectionRequestsRow struct {
+	RequesterID uuid.UUID        `json:"requester_id"`
+	TargetID    uuid.UUID        `json:"target_id"`
+	Status      ConnectionStatus `json:"status"`
+	CreatedAt   time.Time        `json:"created_at"`
+	Username    string           `json:"username"`
+	FullName    string           `json:"full_name"`
+	AvatarUrl   sql.NullString   `json:"avatar_url"`
+}
+
+func (q *Queries) ListSentConnectionRequests(ctx context.Context, requesterID uuid.UUID) ([]ListSentConnectionRequestsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSentConnectionRequests, requesterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSentConnectionRequestsRow
+	for rows.Next() {
+		var i ListSentConnectionRequestsRow
+		if err := rows.Scan(
+			&i.RequesterID,
+			&i.TargetID,
+			&i.Status,
+			&i.CreatedAt,
 			&i.Username,
 			&i.FullName,
 			&i.AvatarUrl,

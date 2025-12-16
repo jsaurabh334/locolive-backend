@@ -28,7 +28,7 @@ func (server *Server) viewStory(ctx *gin.Context) {
 
 	view, err := server.store.CreateStoryView(ctx, db.CreateStoryViewParams{
 		StoryID: storyID,
-		UserID:  authPayload.ID,
+		UserID:  authPayload.UserID,
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -60,7 +60,7 @@ func (server *Server) getStoryViewers(ctx *gin.Context) {
 		return
 	}
 
-	if story.UserID != authPayload.ID {
+	if story.UserID != authPayload.UserID {
 		ctx.JSON(http.StatusForbidden, gin.H{"error": "you can only view your own story viewers"})
 		return
 	}
@@ -81,15 +81,13 @@ type reactToStoryRequest struct {
 
 // reactToStory adds or updates a reaction to a story
 func (server *Server) reactToStory(ctx *gin.Context) {
-	var uriReq viewStoryRequest
+	var uriReq reactToStoryRequest
 	if err := ctx.ShouldBindUri(&uriReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
-	var bodyReq struct {
-		Emoji string `json:"emoji" binding:"required,min=1,max=10"`
-	}
+	var bodyReq reactToStoryRequest
 	if err := ctx.ShouldBindJSON(&bodyReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
@@ -100,7 +98,7 @@ func (server *Server) reactToStory(ctx *gin.Context) {
 
 	reaction, err := server.store.CreateStoryReaction(ctx, db.CreateStoryReactionParams{
 		StoryID: storyID,
-		UserID:  authPayload.ID,
+		UserID:  authPayload.UserID,
 		Emoji:   bodyReq.Emoji,
 	})
 	if err != nil {
@@ -124,7 +122,7 @@ func (server *Server) deleteStoryReaction(ctx *gin.Context) {
 
 	err := server.store.DeleteStoryReaction(ctx, db.DeleteStoryReactionParams{
 		StoryID: storyID,
-		UserID:  authPayload.ID,
+		UserID:  authPayload.UserID,
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))

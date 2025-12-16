@@ -6,11 +6,48 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
 )
+
+func (server *Server) listConnections(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	connections, err := server.store.ListConnections(ctx, authPayload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, connections)
+}
+
+func (server *Server) listPendingRequests(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	requests, err := server.store.ListPendingRequests(ctx, authPayload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, requests)
+}
+
+func (server *Server) listSentRequests(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	requests, err := server.store.ListSentConnectionRequests(ctx, authPayload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, requests)
+}
 
 type connectionRequest struct {
 	TargetUserID string `json:"target_user_id" binding:"required,uuid"`
@@ -23,11 +60,21 @@ func (server *Server) sendConnectionRequest(ctx *gin.Context) {
 		return
 	}
 
-	targetID, _ := uuid.Parse(req.TargetUserID)
+	targetID, err := uuid.Parse(req.TargetUserID)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
+	if targetID == authPayload.UserID {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "cannot connect with yourself"})
+		return
+	}
+
 	// Spam prevention: limit to 20 connection requests per day
-	count, err := server.store.CountConnectionRequestsToday(ctx, authPayload.ID)
+	count, err := server.store.CountConnectionRequestsToday(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
@@ -37,29 +84,39 @@ func (server *Server) sendConnectionRequest(ctx *gin.Context) {
 		return
 	}
 
-    // Get requester info for notification
-    requester, err := server.store.GetUserByID(ctx, authPayload.ID)
-    if err != nil {
-        ctx.JSON(http.StatusInternalServerError, errorResponse(err))
-        return
-    }
-    
-	conn, err := server.store.CreateConnectionRequest(ctx, db.CreateConnectionRequestParams{
-		RequesterID: authPayload.ID,
-		TargetID:    targetID,
-	})
+	// Get requester info for notification
+	requester, err := server.store.GetUserByID(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-	
+
+	conn, err := server.store.CreateConnectionRequest(ctx, db.CreateConnectionRequestParams{
+		RequesterID: authPayload.UserID,
+		TargetID:    targetID,
+	})
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			switch pqErr.Code.Name() {
+			case "unique_violation":
+				ctx.JSON(http.StatusConflict, gin.H{"error": "connection request already exists"})
+				return
+			case "foreign_key_violation":
+				ctx.JSON(http.StatusNotFound, gin.H{"error": "target user not found"})
+				return
+			}
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
 	// Create notification for target user
 	_, err = server.store.CreateNotification(ctx, db.CreateNotificationParams{
 		UserID:        targetID,
 		Type:          "connection_request",
 		Title:         "New Connection Request",
 		Message:       fmt.Sprintf("%s wants to connect with you", requester.Username),
-		RelatedUserID: uuid.NullUUID{UUID: authPayload.ID, Valid: true},
+		RelatedUserID: uuid.NullUUID{UUID: authPayload.UserID, Valid: true},
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create connection request notification")
@@ -82,27 +139,27 @@ func (server *Server) updateConnection(ctx *gin.Context) {
 
 	requesterID, _ := uuid.Parse(req.RequesterID)
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-    
+
 	conn, err := server.store.UpdateConnectionStatus(ctx, db.UpdateConnectionStatusParams{
 		RequesterID: requesterID,
-		TargetID:    authPayload.ID, // I am the target accepting the request
+		TargetID:    authPayload.UserID, // I am the target accepting the request
 		Status:      db.ConnectionStatus(req.Status),
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-	
+
 	// Create notification if connection was accepted
 	if req.Status == "accepted" {
-		accepter, err := server.store.GetUserByID(ctx, authPayload.ID)
+		accepter, err := server.store.GetUserByID(ctx, authPayload.UserID)
 		if err == nil {
 			_, err = server.store.CreateNotification(ctx, db.CreateNotificationParams{
 				UserID:        requesterID,
 				Type:          "connection_accepted",
 				Title:         "Connection Accepted",
 				Message:       fmt.Sprintf("%s accepted your connection request", accepter.Username),
-				RelatedUserID: uuid.NullUUID{UUID: authPayload.ID, Valid: true},
+				RelatedUserID: uuid.NullUUID{UUID: authPayload.UserID, Valid: true},
 			})
 			if err != nil {
 				log.Error().Err(err).Msg("failed to create connection accepted notification")
@@ -111,4 +168,26 @@ func (server *Server) updateConnection(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, conn)
+}
+
+func (server *Server) deleteConnection(ctx *gin.Context) {
+	targetUserIDStr := ctx.Param("id")
+	targetUserID, err := uuid.Parse(targetUserIDStr)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	err = server.store.DeleteConnection(ctx, db.DeleteConnectionParams{
+		RequesterID: authPayload.UserID,
+		TargetID:    targetUserID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "connection deleted"})
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/mmcloughlin/geohash"
 
 	"privacy-social-backend/internal/repository/db"
+	"privacy-social-backend/internal/token"
 )
 
 type getStoriesMapRequest struct {
@@ -30,6 +31,9 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 		return
 	}
 
+	// Get auth payload for privacy/block rules
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
 	// Validate bounding box
 	if req.North <= req.South {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "north must be greater than south"})
@@ -41,8 +45,9 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 	}
 
 	// Create cache key from bounding box (rounded to 2 decimals for better cache hits)
-	cacheKey := fmt.Sprintf("map:%.2f:%.2f:%.2f:%.2f", req.North, req.South, req.East, req.West)
-	
+	// Create cache key from bounding box (rounded to 2 decimals for better cache hits) + UserID for personalization
+	cacheKey := fmt.Sprintf("map:%.2f:%.2f:%.2f:%.2f:%s", req.North, req.South, req.East, req.West, authPayload.UserID)
+
 	// Try Redis cache first
 	cachedData, err := server.redis.Get(context.Background(), cacheKey).Result()
 	if err == nil && cachedData != "" {
@@ -52,10 +57,11 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 	}
 
 	stories, err := server.store.GetStoriesInBounds(ctx, db.GetStoriesInBoundsParams{
-		North: req.North,
-		South: req.South,
-		East:  req.East,
-		West:  req.West,
+		North:         req.North,
+		South:         req.South,
+		East:          req.East,
+		West:          req.West,
+		CurrentUserID: authPayload.UserID,
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -75,17 +81,17 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 
 	// Convert clusters to response format
 	type ClusterResponse struct {
-		Geohash   string                      `json:"geohash"`
-		Latitude  float64                     `json:"latitude"`
-		Longitude float64                     `json:"longitude"`
-		Count     int                         `json:"count"`
-		Stories   []db.GetStoriesInBoundsRow  `json:"stories,omitempty"`
+		Geohash   string          `json:"geohash"`
+		Latitude  float64         `json:"latitude"`
+		Longitude float64         `json:"longitude"`
+		Count     int             `json:"count"`
+		Stories   []StoryResponse `json:"stories,omitempty"`
 	}
 
 	var response []ClusterResponse
 	for hash, clusterStories := range clusters {
 		lat, lng := geohash.Decode(hash)
-		
+
 		cluster := ClusterResponse{
 			Geohash:   hash,
 			Latitude:  lat,
@@ -96,7 +102,10 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 		// If cluster has 3 or fewer stories, include them
 		// Otherwise just show count for privacy
 		if len(clusterStories) <= 3 {
-			cluster.Stories = clusterStories
+			cluster.Stories = make([]StoryResponse, len(clusterStories))
+			for i, story := range clusterStories {
+				cluster.Stories[i] = toStoryResponseFromBounds(story)
+			}
 		}
 
 		response = append(response, cluster)
@@ -106,7 +115,7 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 		"clusters": response,
 		"total":    len(stories),
 	}
-	
+
 	// Cache the result
 	responseJSON, _ := json.Marshal(result)
 	server.redis.Set(context.Background(), cacheKey, responseJSON, mapCacheTTL)

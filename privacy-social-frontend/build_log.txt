@@ -1,0 +1,29 @@
+
+> privacy-social-frontend@0.0.0 build
+> vite build
+
+vite v7.3.0 building client environment for production...
+transforming...
+✓ 214 modules transformed.
+✗ Build failed in 590ms
+error during build:
+src/App.jsx (4:7): "default" is not exported by "src/components/ProtectedRoute.jsx", imported by "src/App.jsx".
+file: /Users/saurabhjain/Desktop/golang/privacy-social-frontend/src/App.jsx:4:7
+
+2: import { AuthProvider } from './context/AuthContext';
+3: import { LocationProvider } from './context/LocationContext';
+4: import ProtectedRoute from './components/ProtectedRoute';
+          ^
+5: import Login from './pages/Login';
+6: import Register from './pages/Register';
+
+    at getRollupError (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/parseAst.js:401:41)
+    at error (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/parseAst.js:397:42)
+    at Module.error (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:16994:16)
+    at Module.traceVariable (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:17450:29)
+    at ModuleScope.findVariable (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:15113:39)
+    at FunctionScope.findVariable (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:5674:38)
+    at FunctionBodyScope.findVariable (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:5674:38)
+    at Identifier.bind (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:5448:40)
+    at CallExpression.bind (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:2813:28)
+    at CallExpression.bind (file:///Users/saurabhjain/Desktop/golang/privacy-social-frontend/node_modules/rollup/dist/es/shared/node-entry.js:12148:15)

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,7 +15,8 @@ func TestJWTMaker(t *testing.T) {
 	username := "testuser"
 	duration := time.Minute
 
-	token, payload, err := maker.CreateToken(username, duration)
+	userID := uuid.New()
+	token, payload, err := maker.CreateToken(username, userID, duration)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	require.NotNil(t, payload)
@@ -24,6 +26,7 @@ func TestJWTMaker(t *testing.T) {
 	require.NotNil(t, payload2)
 
 	require.Equal(t, username, payload2.Username)
+	require.Equal(t, userID, payload2.UserID)
 	require.WithinDuration(t, payload.IssuedAt, payload2.IssuedAt, time.Second)
 	require.WithinDuration(t, payload.ExpiredAt, payload2.ExpiredAt, time.Second)
 }
@@ -32,7 +35,7 @@ func TestExpiredJWTToken(t *testing.T) {
 	maker, err := NewJWTMaker("12345678901234567890123456789012")
 	require.NoError(t, err)
 
-	token, payload, err := maker.CreateToken("testuser", -time.Minute)
+	token, payload, err := maker.CreateToken("testuser", uuid.New(), -time.Minute)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	require.NotNil(t, payload)

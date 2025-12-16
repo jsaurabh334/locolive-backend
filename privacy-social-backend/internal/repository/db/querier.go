@@ -6,12 +6,14 @@ package db
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/google/uuid"
 )
 
 type Querier interface {
 	BanUser(ctx context.Context, arg BanUserParams) (User, error)
+	BlockUser(ctx context.Context, arg BlockUserParams) (BlockedUser, error)
 	BoostUser(ctx context.Context, arg BoostUserParams) (User, error)
 	CountConnectionRequestsToday(ctx context.Context, requesterID uuid.UUID) (int64, error)
 	CountCrossingsToday(ctx context.Context, userID1 uuid.UUID) (int64, error)
@@ -23,10 +25,12 @@ type Querier interface {
 	CreateCrossing(ctx context.Context, arg CreateCrossingParams) (Crossing, error)
 	CreateLocation(ctx context.Context, arg CreateLocationParams) (Location, error)
 	CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error)
+	CreateMessageReaction(ctx context.Context, arg CreateMessageReactionParams) (MessageReaction, error)
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error)
 	CreateReport(ctx context.Context, arg CreateReportParams) (Report, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStory(ctx context.Context, arg CreateStoryParams) (Story, error)
+	CreateStoryMention(ctx context.Context, arg CreateStoryMentionParams) (StoryMention, error)
 	// Story Reactions
 	CreateStoryReaction(ctx context.Context, arg CreateStoryReactionParams) (StoryReaction, error)
 	// Story Views
@@ -34,62 +38,84 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Used for panic mode - deletes all user data
 	DeleteAllUserData(ctx context.Context, id uuid.UUID) error
+	DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error
 	DeleteExpiredLocations(ctx context.Context) error
 	DeleteExpiredStories(ctx context.Context) error
+	DeleteMessage(ctx context.Context, arg DeleteMessageParams) error
+	DeleteMessageReaction(ctx context.Context, arg DeleteMessageReactionParams) error
 	// Delete messages older than specified days (default: 30 days)
 	DeleteOldMessages(ctx context.Context) error
 	// Delete notifications older than 30 days
 	DeleteOldNotifications(ctx context.Context) error
 	// Admin: Delete story
 	DeleteStory(ctx context.Context, id uuid.UUID) error
+	DeleteStoryMentions(ctx context.Context, storyID uuid.UUID) error
 	DeleteStoryReaction(ctx context.Context, arg DeleteStoryReactionParams) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 	FindPotentialCrossings(ctx context.Context, arg FindPotentialCrossingsParams) ([]FindPotentialCrossingsRow, error)
+	GetBlockedUsers(ctx context.Context, blockerID uuid.UUID) ([]GetBlockedUsersRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
-	// Newest third
 	// Get stories from connected users (not limited by radius)
 	GetConnectionStories(ctx context.Context, userID uuid.UUID) ([]GetConnectionStoriesRow, error)
 	GetConversionStats(ctx context.Context) (GetConversionStatsRow, error)
 	GetCrossingsForUser(ctx context.Context, userID1 uuid.UUID) ([]Crossing, error)
 	GetEngagementStats(ctx context.Context) (GetEngagementStatsRow, error)
+	GetMessage(ctx context.Context, id uuid.UUID) (Message, error)
+	GetMessageReactions(ctx context.Context, messageID uuid.UUID) ([]GetMessageReactionsRow, error)
+	GetPrivacySettings(ctx context.Context, userID uuid.UUID) (PrivacySetting, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	// Get stories within a bounding box for map view
 	GetStoriesInBounds(ctx context.Context, arg GetStoriesInBoundsParams) ([]GetStoriesInBoundsRow, error)
 	GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]GetStoriesWithinRadiusRow, error)
 	GetStoryByID(ctx context.Context, id uuid.UUID) (Story, error)
+	GetStoryMentions(ctx context.Context, storyID uuid.UUID) ([]GetStoryMentionsRow, error)
 	GetStoryReactions(ctx context.Context, storyID uuid.UUID) ([]GetStoryReactionsRow, error)
 	// Admin: Story stats
 	GetStoryStats(ctx context.Context) (GetStoryStatsRow, error)
 	// Only accessible by story owner
 	GetStoryViewers(ctx context.Context, storyID uuid.UUID) ([]GetStoryViewersRow, error)
 	GetStreakRetentionStats(ctx context.Context) (GetStreakRetentionStatsRow, error)
+	GetSystemStats(ctx context.Context) (GetSystemStatsRow, error)
 	// Get user's activity status and visibility
 	GetUserActivityStatus(ctx context.Context, id uuid.UUID) (GetUserActivityStatusRow, error)
+	GetUserByEmail(ctx context.Context, email sql.NullString) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserByPhone(ctx context.Context, phone string) (User, error)
-	// Get public user profile information
+	GetUserByUsername(ctx context.Context, username string) (User, error)
+	GetUserEngagementStats(ctx context.Context, userID uuid.UUID) (GetUserEngagementStatsRow, error)
+	GetUserMentions(ctx context.Context, arg GetUserMentionsParams) ([]GetUserMentionsRow, error)
 	GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProfileRow, error)
-	GetUserStats(ctx context.Context) (GetUserStatsRow, error)
+	IsUserBlocked(ctx context.Context, arg IsUserBlockedParams) (bool, error)
 	// Admin: List all stories
 	ListAllStories(ctx context.Context, arg ListAllStoriesParams) ([]ListAllStoriesRow, error)
 	ListConnections(ctx context.Context, requesterID uuid.UUID) ([]ListConnectionsRow, error)
 	ListMessages(ctx context.Context, arg ListMessagesParams) ([]Message, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
+	ListPendingRequests(ctx context.Context, targetID uuid.UUID) ([]ListPendingRequestsRow, error)
 	// Admin: List all reports
 	ListReports(ctx context.Context, arg ListReportsParams) ([]ListReportsRow, error)
+	ListSentConnectionRequests(ctx context.Context, requesterID uuid.UUID) ([]ListSentConnectionRequestsRow, error)
 	// Admin Queries
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	MarkAllNotificationsAsRead(ctx context.Context, userID uuid.UUID) error
+	MarkConversationRead(ctx context.Context, arg MarkConversationReadParams) error
+	MarkMessageRead(ctx context.Context, arg MarkMessageReadParams) (Message, error)
 	MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) (Notification, error)
 	// Admin: Resolve report
 	ResolveReport(ctx context.Context, id uuid.UUID) (Report, error)
+	SearchUsers(ctx context.Context, query string) ([]SearchUsersRow, error)
 	// Privacy Features
 	ToggleGhostMode(ctx context.Context, arg ToggleGhostModeParams) (User, error)
+	UnblockUser(ctx context.Context, arg UnblockUserParams) error
 	UpdateConnectionStatus(ctx context.Context, arg UpdateConnectionStatusParams) (Connection, error)
+	UpdateMessage(ctx context.Context, arg UpdateMessageParams) (Message, error)
 	// Updates last_active_at and calculates activity streak
 	UpdateUserActivity(ctx context.Context, id uuid.UUID) (User, error)
-	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
+	UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) (UpdateUserEmailRow, error)
+	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (UpdateUserProfileRow, error)
 	UpdateUserTrust(ctx context.Context, arg UpdateUserTrustParams) (User, error)
+	UpsertPrivacySettings(ctx context.Context, arg UpsertPrivacySettingsParams) (PrivacySetting, error)
 }
 
 var _ Querier = (*Queries)(nil)

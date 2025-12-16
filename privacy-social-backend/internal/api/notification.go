@@ -31,7 +31,7 @@ func (server *Server) getNotifications(ctx *gin.Context) {
 
 	offset := (req.Page - 1) * req.PageSize
 	notifications, err := server.store.ListNotifications(ctx, db.ListNotificationsParams{
-		UserID: authPayload.ID,
+		UserID: authPayload.UserID,
 		Limit:  req.PageSize,
 		Offset: offset,
 	})
@@ -65,7 +65,7 @@ func (server *Server) markNotificationRead(ctx *gin.Context) {
 
 	notification, err := server.store.MarkNotificationAsRead(ctx, db.MarkNotificationAsReadParams{
 		ID:     notificationID,
-		UserID: authPayload.ID,
+		UserID: authPayload.UserID,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -83,7 +83,7 @@ func (server *Server) markNotificationRead(ctx *gin.Context) {
 func (server *Server) markAllNotificationsRead(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	err := server.store.MarkAllNotificationsAsRead(ctx, authPayload.ID)
+	err := server.store.MarkAllNotificationsAsRead(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
@@ -96,7 +96,7 @@ func (server *Server) markAllNotificationsRead(ctx *gin.Context) {
 func (server *Server) getUnreadCount(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	count, err := server.store.CountUnreadNotifications(ctx, authPayload.ID)
+	count, err := server.store.CountUnreadNotifications(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return

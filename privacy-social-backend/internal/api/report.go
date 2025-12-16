@@ -27,26 +27,26 @@ func (server *Server) createReport(ctx *gin.Context) {
 
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-    var targetUserID uuid.NullUUID
-    if req.TargetUserID != "" {
-        id, _ := uuid.Parse(req.TargetUserID)
-        targetUserID = uuid.NullUUID{UUID: id, Valid: true}
-    }
+	var targetUserID uuid.NullUUID
+	if req.TargetUserID != "" {
+		id, _ := uuid.Parse(req.TargetUserID)
+		targetUserID = uuid.NullUUID{UUID: id, Valid: true}
+	}
 
-    var targetStoryID uuid.NullUUID
-    if req.TargetStoryID != "" {
-        id, _ := uuid.Parse(req.TargetStoryID)
-        targetStoryID = uuid.NullUUID{UUID: id, Valid: true}
-    }
-    
-    // Validate that at least one target is present
-    if !targetUserID.Valid && !targetStoryID.Valid {
-        ctx.JSON(http.StatusBadRequest, gin.H{"error": "must target user or story"})
-        return
-    }
+	var targetStoryID uuid.NullUUID
+	if req.TargetStoryID != "" {
+		id, _ := uuid.Parse(req.TargetStoryID)
+		targetStoryID = uuid.NullUUID{UUID: id, Valid: true}
+	}
+
+	// Validate that at least one target is present
+	if !targetUserID.Valid && !targetStoryID.Valid {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "must target user or story"})
+		return
+	}
 
 	report, err := server.store.CreateReport(ctx, db.CreateReportParams{
-		ReporterID:    authPayload.ID,
+		ReporterID:    authPayload.UserID,
 		TargetUserID:  targetUserID,
 		TargetStoryID: targetStoryID,
 		Reason:        db.ReportReason(req.Reason),

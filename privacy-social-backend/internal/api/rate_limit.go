@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ulule/limiter/v3"
 	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
-	sredis "github.com/ulule/limiter/v3/drivers/store/redis"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
+	sredis "github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
 // Rate limit configurations
@@ -18,16 +18,16 @@ var (
 		Limit:  100,
 	}
 
-	// Auth endpoints: 5 requests per 15 minutes
+	// Auth endpoints: 60 requests per 1 minute
 	authRate = limiter.Rate{
-		Period: 15 * time.Minute,
-		Limit:  5,
+		Period: 1 * time.Minute,
+		Limit:  60,
 	}
 
-	// Story creation: 10 per hour
+	// Story creation: 50 per hour
 	storyRate = limiter.Rate{
 		Period: 1 * time.Hour,
-		Limit:  10,
+		Limit:  50,
 	}
 
 	// Location updates: 60 per hour

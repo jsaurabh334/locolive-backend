@@ -18,7 +18,8 @@ type Server struct {
 	tokenMaker token.Maker
 	redis      *redis.Client
 	router     *gin.Engine
-    safety     *SafetyMonitor
+	hub        *Hub
+	safety     *SafetyMonitor
 }
 
 // NewServer creates a new HTTP server and setup routing
@@ -33,15 +34,18 @@ func NewServer(config config.Config, store repository.Store) (*Server, error) {
 		// Fallback for simple address
 		opt = &redis.Options{Addr: config.RedisAddress}
 	}
-    
-    rdb := redis.NewClient(opt)
+
+	rdb := redis.NewClient(opt)
+	hub := NewHub()
+	go hub.Run() // Start the hub in a goroutine
 
 	server := &Server{
 		config:     config,
 		store:      store,
 		tokenMaker: tokenMaker,
 		redis:      rdb,
-        safety:     NewSafetyMonitor(rdb),
+		safety:     NewSafetyMonitor(rdb),
+		hub:        hub,
 	}
 
 	server.setupRouter()

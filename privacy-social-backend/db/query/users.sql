@@ -12,6 +12,10 @@ INSERT INTO users (
 SELECT * FROM users
 WHERE phone = $1 LIMIT 1;
 
+-- name: GetUserByUsername :one
+SELECT * FROM users
+WHERE username = $1 LIMIT 1;
+
 -- name: GetUserByID :one
 SELECT * FROM users
 WHERE id = $1 LIMIT 1;
@@ -19,15 +23,6 @@ WHERE id = $1 LIMIT 1;
 -- name: UpdateUserTrust :one
 UPDATE users
 SET trust_level = $2
-WHERE id = $1
-RETURNING *;
-
--- name: UpdateUserProfile :one
-UPDATE users
-SET 
-  full_name = COALESCE(sqlc.narg('full_name'), full_name),
-  avatar_url = COALESCE(sqlc.narg('avatar_url'), avatar_url),
-  bio = COALESCE(sqlc.narg('bio'), bio)
 WHERE id = $1
 RETURNING *;
 
@@ -109,30 +104,43 @@ SELECT
 FROM users
 WHERE id = $1;
 
+-- name: UpdateUserProfile :one
+UPDATE users
+SET 
+  full_name = COALESCE(sqlc.narg('full_name'), full_name),
+  username = COALESCE(sqlc.narg('username'), username),
+  avatar_url = COALESCE(sqlc.narg('avatar_url'), avatar_url),
+  bio = COALESCE(sqlc.narg('bio'), bio),
+  banner_url = COALESCE(sqlc.narg('banner_url'), banner_url),
+  theme = COALESCE(sqlc.narg('theme'), theme),
+  profile_visibility = COALESCE(sqlc.narg('profile_visibility'), profile_visibility)
+WHERE id = $1
+RETURNING id, username, full_name, avatar_url, bio, banner_url, theme, profile_visibility, created_at;
+
 -- name: GetUserProfile :one
--- Get public user profile information
 SELECT 
-  id,
-  username,
-  full_name,
-  avatar_url,
-  bio,
-  is_premium,
+  u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.created_at, u.is_premium, u.last_active_at,
+  (SELECT COUNT(*) FROM stories WHERE stories.user_id = u.id) as story_count,
+  (SELECT COUNT(*) FROM connections WHERE connections.requester_id = u.id OR connections.target_id = u.id) as connection_count,
   CASE
-    WHEN DATE(last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
-    ELSE activity_streak
+    WHEN DATE(u.last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
+    ELSE u.activity_streak
   END as activity_streak,
-  last_active_at,
-  created_at,
   CASE
-    WHEN DATE(last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN 'active'
+    WHEN DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN 'active'
     ELSE 'hidden'
   END as visibility_status
-FROM users
-WHERE id = $1
-AND is_shadow_banned = false;
+FROM users u
+WHERE u.id = $1;
 
--- name: GetUserStats :one
+-- name: GetUserEngagementStats :one
+SELECT 
+    (SELECT COUNT(*) FROM stories WHERE stories.user_id = $1) as story_count,
+    (SELECT COUNT(*) FROM connections WHERE (connections.requester_id = $1 OR connections.target_id = $1) AND status = 'accepted') as connection_count,
+    (SELECT COUNT(*) FROM story_views v JOIN stories s ON v.story_id = s.id WHERE s.user_id = $1) as total_views,
+    (SELECT COUNT(*) FROM story_reactions r JOIN stories s ON r.story_id = s.id WHERE s.user_id = $1) as total_reactions;
+
+-- name: GetSystemStats :one
 SELECT 
   COUNT(*) as total_users,
   COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as new_users_24h,
@@ -145,3 +153,33 @@ SET boost_expires_at = $2
 WHERE id = $1
 RETURNING *;
 
+-- name: SearchUsers :many
+SELECT 
+  id,
+  username,
+  full_name,
+  avatar_url,
+  bio,
+  is_verified,
+  created_at
+FROM users
+WHERE 
+  (username ILIKE '%' || sqlc.arg(query)::text || '%' OR full_name ILIKE '%' || sqlc.arg(query)::text || '%')
+  AND is_shadow_banned = false
+LIMIT 20;
+
+
+-- name: UpdateUserEmail :one
+UPDATE users
+SET email = $2
+WHERE id = $1
+RETURNING id, username, email, full_name;
+
+-- name: UpdateUserPassword :exec
+UPDATE users
+SET password_hash = $2
+WHERE id = $1;
+
+-- name: GetUserByEmail :one
+SELECT * FROM users
+WHERE email = $1 LIMIT 1;

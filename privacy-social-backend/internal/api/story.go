@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/mmcloughlin/geohash"
 	"github.com/rs/zerolog/log"
 
@@ -41,29 +42,29 @@ func (server *Server) createStory(ctx *gin.Context) {
 
 	hash := geohash.Encode(req.Latitude, req.Longitude)
 
-    // Safety Check: Fake GPS
-    val := server.safety.ValidateUserMovement(ctx, authPayload.ID.String(), req.Latitude, req.Longitude)
-    if !val.Allowed {
-        if val.ShouldBan {
-            // Shadow ban the user (silently)
-             server.store.BanUser(ctx, db.BanUserParams{
-                ID:             authPayload.ID,
-                IsShadowBanned: true,
-            })
-            log.Warn().Str("user_id", authPayload.ID.String()).Msg("User shadow-banned for fake GPS")
-        }
-        // If simply not allowed but not banned, return error? 
-        // For Fake GPS (Speed > 1000km/h), ShouldBan is always true.
-        // We continue execution to maintain the "Shadow" illusion (story is created but user is banned, so nobody sees it)
-    }
-	
+	// Safety Check: Fake GPS
+	val := server.safety.ValidateUserMovement(ctx, authPayload.UserID.String(), req.Latitude, req.Longitude)
+	if !val.Allowed {
+		if val.ShouldBan {
+			// Shadow ban the user (silently)
+			server.store.BanUser(ctx, db.BanUserParams{
+				ID:             authPayload.UserID,
+				IsShadowBanned: true,
+			})
+			log.Warn().Str("user_id", authPayload.UserID.String()).Msg("User shadow-banned for fake GPS")
+		}
+		// If simply not allowed but not banned, return error?
+		// For Fake GPS (Speed > 1000km/h), ShouldBan is always true.
+		// We continue execution to maintain the "Shadow" illusion (story is created but user is banned, so nobody sees it)
+	}
+
 	// Get user to check premium status
-	user, err := server.store.GetUserByID(ctx, authPayload.ID)
+	user, err := server.store.GetUserByID(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-	
+
 	// Premium users get 48h expiry, free users get 24h
 	expiryDuration := 24 * time.Hour
 	isPremium := false
@@ -73,13 +74,20 @@ func (server *Server) createStory(ctx *gin.Context) {
 	}
 	expiresAt := time.Now().UTC().Add(expiryDuration)
 
-	// In real app: Validate/Upload to S3 here if receiving raw file. 
-    // Here we accept URL.
+	// In real app: Validate/Upload to S3 here if receiving raw file.
+	// Here we accept URL.
+
+	// Prepare caption as sql.NullString
+	var captionNull sql.NullString
+	if req.Caption != "" {
+		captionNull = sql.NullString{String: req.Caption, Valid: true}
+	}
 
 	story, err := server.store.CreateStory(ctx, db.CreateStoryParams{
-		UserID:      authPayload.ID,
+		UserID:      authPayload.UserID,
 		MediaUrl:    req.MediaURL,
 		MediaType:   req.MediaType,
+		Caption:     captionNull,
 		Geohash:     hash,
 		Lng:         req.Longitude,
 		Lat:         req.Latitude,
@@ -93,10 +101,15 @@ func (server *Server) createStory(ctx *gin.Context) {
 	}
 
 	// Update user activity (for visibility system)
-	_, err = server.store.UpdateUserActivity(ctx, authPayload.ID)
+	_, err = server.store.UpdateUserActivity(ctx, authPayload.UserID)
 	if err != nil {
 		// Log error but don't fail the request
 		log.Error().Err(err).Msg("Failed to update user activity")
+	}
+
+	// Create mentions if caption has @username
+	if req.Caption != "" {
+		go server.createStoryMentions(ctx, story.ID, req.Caption)
 	}
 
 	// Invalidate feed cache for the area
@@ -106,7 +119,7 @@ func (server *Server) createStory(ctx *gin.Context) {
 	}
 	server.redis.Del(ctx, "feed:"+userGeohash)
 
-	ctx.JSON(http.StatusCreated, story)
+	ctx.JSON(http.StatusCreated, toStoryResponseFromStory(story))
 }
 
 type getFeedRequest struct {
@@ -142,11 +155,15 @@ func (server *Server) getFeed(ctx *gin.Context) {
 	expansionSteps := []int{5000, 10000, 15000, 20000} // 5km -> 20km auto-expansion
 	var message string
 
+	// Get auth payload for blocking/privacy rules
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
 	for _, radius := range expansionSteps {
 		stories, err = server.store.GetStoriesWithinRadius(ctx, db.GetStoriesWithinRadiusParams{
 			Lng:          req.Longitude,
 			Lat:          req.Latitude,
 			RadiusMeters: float64(radius),
+			UserID:       authPayload.UserID,
 		})
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -165,9 +182,15 @@ func (server *Server) getFeed(ctx *gin.Context) {
 		message = "No users found nearby"
 	}
 
+	// Convert to response DTOs
+	storyResponses := make([]StoryResponse, len(stories))
+	for i, story := range stories {
+		storyResponses[i] = toStoryResponse(story)
+	}
+
 	response := gin.H{
-		"stories": stories,
-		"count":   len(stories),
+		"stories": storyResponses,
+		"count":   len(storyResponses),
 		"message": message,
 	}
 
@@ -179,12 +202,56 @@ func (server *Server) getFeed(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response)
 }
 
+// deleteStory allows users to delete their own stories
+func (server *Server) deleteUserStory(ctx *gin.Context) {
+	storyID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	// Get story to verify ownership
+	story, err := server.store.GetStoryByID(ctx, storyID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "story not found"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Check if user owns the story
+	if story.UserID != authPayload.UserID {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "you can only delete your own stories"})
+		return
+	}
+
+	// Delete the story
+	err = server.store.DeleteStory(ctx, storyID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Invalidate feed cache
+	userGeohash := story.Geohash
+	if len(userGeohash) > 5 {
+		userGeohash = userGeohash[:5]
+	}
+	server.redis.Del(ctx, "feed:"+userGeohash)
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "story deleted successfully"})
+}
+
 // getConnectionStories returns stories from connected users, ignoring radius
 func (server *Server) getConnectionStories(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
 	// Cache key based on user ID
-	cacheKey := "stories:connections:" + authPayload.ID.String()
+	cacheKey := "stories:connections:" + authPayload.UserID.String()
 
 	// Try Redis cache first
 	cachedData, err := server.redis.Get(ctx, cacheKey).Result()
@@ -194,16 +261,22 @@ func (server *Server) getConnectionStories(ctx *gin.Context) {
 		return
 	}
 
-	stories, err := server.store.GetConnectionStories(ctx, authPayload.ID)
+	stories, err := server.store.GetConnectionStories(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
 
+	// Convert to response DTOs
+	storyResponses := make([]StoryResponse, len(stories))
+	for i, story := range stories {
+		storyResponses[i] = toStoryResponseFromConnection(story)
+	}
+
 	// Cache for 5 minutes
-	responseJSON, _ := json.Marshal(stories)
+	responseJSON, _ := json.Marshal(storyResponses)
 	server.redis.Set(ctx, cacheKey, responseJSON, feedCacheTTL)
 
 	ctx.Header("X-Cache", "MISS")
-	ctx.JSON(http.StatusOK, stories)
+	ctx.JSON(http.StatusOK, storyResponses)
 }

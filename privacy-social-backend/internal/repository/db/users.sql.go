@@ -17,7 +17,7 @@ const banUser = `-- name: BanUser :one
 UPDATE users
 SET is_shadow_banned = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email
 `
 
 type BanUserParams struct {
@@ -48,6 +48,10 @@ func (q *Queries) BanUser(ctx context.Context, arg BanUserParams) (User, error) 
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
 }
@@ -56,7 +60,7 @@ const boostUser = `-- name: BoostUser :one
 UPDATE users
 SET boost_expires_at = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email
 `
 
 type BoostUserParams struct {
@@ -87,6 +91,10 @@ func (q *Queries) BoostUser(ctx context.Context, arg BoostUserParams) (User, err
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
 }
@@ -110,7 +118,7 @@ INSERT INTO users (
   full_name
 ) VALUES (
   $1, $2, $3, $4
-) RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+) RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email
 `
 
 type CreateUserParams struct {
@@ -148,6 +156,10 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
 }
@@ -171,6 +183,27 @@ WHERE id = $1
 func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.ExecContext(ctx, deleteUser, id)
 	return err
+}
+
+const getSystemStats = `-- name: GetSystemStats :one
+SELECT 
+  COUNT(*) as total_users,
+  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as new_users_24h,
+  COUNT(*) FILTER (WHERE last_active_at > NOW() - INTERVAL '1 hour') as active_users_1h
+FROM users
+`
+
+type GetSystemStatsRow struct {
+	TotalUsers    int64 `json:"total_users"`
+	NewUsers24h   int64 `json:"new_users_24h"`
+	ActiveUsers1h int64 `json:"active_users_1h"`
+}
+
+func (q *Queries) GetSystemStats(ctx context.Context) (GetSystemStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getSystemStats)
+	var i GetSystemStatsRow
+	err := row.Scan(&i.TotalUsers, &i.NewUsers24h, &i.ActiveUsers1h)
+	return i, err
 }
 
 const getUserActivityStatus = `-- name: GetUserActivityStatus :one
@@ -218,8 +251,44 @@ func (q *Queries) GetUserActivityStatus(ctx context.Context, id uuid.UUID) (GetU
 	return i, err
 }
 
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email FROM users
+WHERE email = $1 LIMIT 1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email sql.NullString) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Phone,
+		&i.PasswordHash,
+		&i.Username,
+		&i.FullName,
+		&i.AvatarUrl,
+		&i.Bio,
+		&i.Role,
+		&i.TrustLevel,
+		&i.IsVerified,
+		&i.IsShadowBanned,
+		&i.LastActiveAt,
+		&i.CreatedAt,
+		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
+	)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at FROM users
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email FROM users
 WHERE id = $1 LIMIT 1
 `
 
@@ -246,12 +315,16 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at FROM users
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email FROM users
 WHERE phone = $1 LIMIT 1
 `
 
@@ -278,47 +351,112 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone string) (User, error
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
+	)
+	return i, err
+}
+
+const getUserByUsername = `-- name: GetUserByUsername :one
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email FROM users
+WHERE username = $1 LIMIT 1
+`
+
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByUsername, username)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Phone,
+		&i.PasswordHash,
+		&i.Username,
+		&i.FullName,
+		&i.AvatarUrl,
+		&i.Bio,
+		&i.Role,
+		&i.TrustLevel,
+		&i.IsVerified,
+		&i.IsShadowBanned,
+		&i.LastActiveAt,
+		&i.CreatedAt,
+		&i.IsGhostMode,
+		&i.ActivityStreak,
+		&i.StreakUpdatedAt,
+		&i.IsPremium,
+		&i.StreakFreezesRemaining,
+		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
+	)
+	return i, err
+}
+
+const getUserEngagementStats = `-- name: GetUserEngagementStats :one
+SELECT 
+    (SELECT COUNT(*) FROM stories WHERE stories.user_id = $1) as story_count,
+    (SELECT COUNT(*) FROM connections WHERE (connections.requester_id = $1 OR connections.target_id = $1) AND status = 'accepted') as connection_count,
+    (SELECT COUNT(*) FROM story_views v JOIN stories s ON v.story_id = s.id WHERE s.user_id = $1) as total_views,
+    (SELECT COUNT(*) FROM story_reactions r JOIN stories s ON r.story_id = s.id WHERE s.user_id = $1) as total_reactions
+`
+
+type GetUserEngagementStatsRow struct {
+	StoryCount      int64 `json:"story_count"`
+	ConnectionCount int64 `json:"connection_count"`
+	TotalViews      int64 `json:"total_views"`
+	TotalReactions  int64 `json:"total_reactions"`
+}
+
+func (q *Queries) GetUserEngagementStats(ctx context.Context, userID uuid.UUID) (GetUserEngagementStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserEngagementStats, userID)
+	var i GetUserEngagementStatsRow
+	err := row.Scan(
+		&i.StoryCount,
+		&i.ConnectionCount,
+		&i.TotalViews,
+		&i.TotalReactions,
 	)
 	return i, err
 }
 
 const getUserProfile = `-- name: GetUserProfile :one
 SELECT 
-  id,
-  username,
-  full_name,
-  avatar_url,
-  bio,
-  is_premium,
+  u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.created_at, u.is_premium, u.last_active_at,
+  (SELECT COUNT(*) FROM stories WHERE stories.user_id = u.id) as story_count,
+  (SELECT COUNT(*) FROM connections WHERE connections.requester_id = u.id OR connections.target_id = u.id) as connection_count,
   CASE
-    WHEN DATE(last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
-    ELSE activity_streak
+    WHEN DATE(u.last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
+    ELSE u.activity_streak
   END as activity_streak,
-  last_active_at,
-  created_at,
   CASE
-    WHEN DATE(last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN 'active'
+    WHEN DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day' THEN 'active'
     ELSE 'hidden'
   END as visibility_status
-FROM users
-WHERE id = $1
-AND is_shadow_banned = false
+FROM users u
+WHERE u.id = $1
 `
 
 type GetUserProfileRow struct {
-	ID               uuid.UUID      `json:"id"`
-	Username         string         `json:"username"`
-	FullName         string         `json:"full_name"`
-	AvatarUrl        sql.NullString `json:"avatar_url"`
-	Bio              sql.NullString `json:"bio"`
-	IsPremium        sql.NullBool   `json:"is_premium"`
-	ActivityStreak   interface{}    `json:"activity_streak"`
-	LastActiveAt     sql.NullTime   `json:"last_active_at"`
-	CreatedAt        time.Time      `json:"created_at"`
-	VisibilityStatus string         `json:"visibility_status"`
+	ID                uuid.UUID      `json:"id"`
+	Username          string         `json:"username"`
+	FullName          string         `json:"full_name"`
+	AvatarUrl         sql.NullString `json:"avatar_url"`
+	Bio               sql.NullString `json:"bio"`
+	BannerUrl         sql.NullString `json:"banner_url"`
+	Theme             sql.NullString `json:"theme"`
+	ProfileVisibility sql.NullString `json:"profile_visibility"`
+	CreatedAt         time.Time      `json:"created_at"`
+	IsPremium         sql.NullBool   `json:"is_premium"`
+	LastActiveAt      sql.NullTime   `json:"last_active_at"`
+	StoryCount        int64          `json:"story_count"`
+	ConnectionCount   int64          `json:"connection_count"`
+	ActivityStreak    interface{}    `json:"activity_streak"`
+	VisibilityStatus  string         `json:"visibility_status"`
 }
 
-// Get public user profile information
 func (q *Queries) GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProfileRow, error) {
 	row := q.db.QueryRowContext(ctx, getUserProfile, id)
 	var i GetUserProfileRow
@@ -328,39 +466,23 @@ func (q *Queries) GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProf
 		&i.FullName,
 		&i.AvatarUrl,
 		&i.Bio,
-		&i.IsPremium,
-		&i.ActivityStreak,
-		&i.LastActiveAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
 		&i.CreatedAt,
+		&i.IsPremium,
+		&i.LastActiveAt,
+		&i.StoryCount,
+		&i.ConnectionCount,
+		&i.ActivityStreak,
 		&i.VisibilityStatus,
 	)
 	return i, err
 }
 
-const getUserStats = `-- name: GetUserStats :one
-SELECT 
-  COUNT(*) as total_users,
-  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as new_users_24h,
-  COUNT(*) FILTER (WHERE last_active_at > NOW() - INTERVAL '1 hour') as active_users_1h
-FROM users
-`
-
-type GetUserStatsRow struct {
-	TotalUsers    int64 `json:"total_users"`
-	NewUsers24h   int64 `json:"new_users_24h"`
-	ActiveUsers1h int64 `json:"active_users_1h"`
-}
-
-func (q *Queries) GetUserStats(ctx context.Context) (GetUserStatsRow, error) {
-	row := q.db.QueryRowContext(ctx, getUserStats)
-	var i GetUserStatsRow
-	err := row.Scan(&i.TotalUsers, &i.NewUsers24h, &i.ActiveUsers1h)
-	return i, err
-}
-
 const listUsers = `-- name: ListUsers :many
 
-SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at FROM users
+SELECT id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email FROM users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -400,6 +522,67 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.IsPremium,
 			&i.StreakFreezesRemaining,
 			&i.BoostExpiresAt,
+			&i.BannerUrl,
+			&i.Theme,
+			&i.ProfileVisibility,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchUsers = `-- name: SearchUsers :many
+SELECT 
+  id,
+  username,
+  full_name,
+  avatar_url,
+  bio,
+  is_verified,
+  created_at
+FROM users
+WHERE 
+  (username ILIKE '%' || $1::text || '%' OR full_name ILIKE '%' || $1::text || '%')
+  AND is_shadow_banned = false
+LIMIT 20
+`
+
+type SearchUsersRow struct {
+	ID         uuid.UUID      `json:"id"`
+	Username   string         `json:"username"`
+	FullName   string         `json:"full_name"`
+	AvatarUrl  sql.NullString `json:"avatar_url"`
+	Bio        sql.NullString `json:"bio"`
+	IsVerified bool           `json:"is_verified"`
+	CreatedAt  time.Time      `json:"created_at"`
+}
+
+func (q *Queries) SearchUsers(ctx context.Context, query string) ([]SearchUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchUsers, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchUsersRow
+	for rows.Next() {
+		var i SearchUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.FullName,
+			&i.AvatarUrl,
+			&i.Bio,
+			&i.IsVerified,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -419,7 +602,7 @@ const toggleGhostMode = `-- name: ToggleGhostMode :one
 UPDATE users
 SET is_ghost_mode = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email
 `
 
 type ToggleGhostModeParams struct {
@@ -451,6 +634,10 @@ func (q *Queries) ToggleGhostMode(ctx context.Context, arg ToggleGhostModeParams
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
 }
@@ -476,7 +663,7 @@ SET
   END,
   streak_updated_at = now()
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email
 `
 
 // Updates last_active_at and calculates activity streak
@@ -503,55 +690,120 @@ func (q *Queries) UpdateUserActivity(ctx context.Context, id uuid.UUID) (User, e
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
+}
+
+const updateUserEmail = `-- name: UpdateUserEmail :one
+UPDATE users
+SET email = $2
+WHERE id = $1
+RETURNING id, username, email, full_name
+`
+
+type UpdateUserEmailParams struct {
+	ID    uuid.UUID      `json:"id"`
+	Email sql.NullString `json:"email"`
+}
+
+type UpdateUserEmailRow struct {
+	ID       uuid.UUID      `json:"id"`
+	Username string         `json:"username"`
+	Email    sql.NullString `json:"email"`
+	FullName string         `json:"full_name"`
+}
+
+func (q *Queries) UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) (UpdateUserEmailRow, error) {
+	row := q.db.QueryRowContext(ctx, updateUserEmail, arg.ID, arg.Email)
+	var i UpdateUserEmailRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.FullName,
+	)
+	return i, err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users
+SET password_hash = $2
+WHERE id = $1
+`
+
+type UpdateUserPasswordParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
+	return err
 }
 
 const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
 SET 
   full_name = COALESCE($2, full_name),
-  avatar_url = COALESCE($3, avatar_url),
-  bio = COALESCE($4, bio)
+  username = COALESCE($3, username),
+  avatar_url = COALESCE($4, avatar_url),
+  bio = COALESCE($5, bio),
+  banner_url = COALESCE($6, banner_url),
+  theme = COALESCE($7, theme),
+  profile_visibility = COALESCE($8, profile_visibility)
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+RETURNING id, username, full_name, avatar_url, bio, banner_url, theme, profile_visibility, created_at
 `
 
 type UpdateUserProfileParams struct {
-	ID        uuid.UUID      `json:"id"`
-	FullName  sql.NullString `json:"full_name"`
-	AvatarUrl sql.NullString `json:"avatar_url"`
-	Bio       sql.NullString `json:"bio"`
+	ID                uuid.UUID      `json:"id"`
+	FullName          sql.NullString `json:"full_name"`
+	Username          sql.NullString `json:"username"`
+	AvatarUrl         sql.NullString `json:"avatar_url"`
+	Bio               sql.NullString `json:"bio"`
+	BannerUrl         sql.NullString `json:"banner_url"`
+	Theme             sql.NullString `json:"theme"`
+	ProfileVisibility sql.NullString `json:"profile_visibility"`
 }
 
-func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+type UpdateUserProfileRow struct {
+	ID                uuid.UUID      `json:"id"`
+	Username          string         `json:"username"`
+	FullName          string         `json:"full_name"`
+	AvatarUrl         sql.NullString `json:"avatar_url"`
+	Bio               sql.NullString `json:"bio"`
+	BannerUrl         sql.NullString `json:"banner_url"`
+	Theme             sql.NullString `json:"theme"`
+	ProfileVisibility sql.NullString `json:"profile_visibility"`
+	CreatedAt         time.Time      `json:"created_at"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (UpdateUserProfileRow, error) {
 	row := q.db.QueryRowContext(ctx, updateUserProfile,
 		arg.ID,
 		arg.FullName,
+		arg.Username,
 		arg.AvatarUrl,
 		arg.Bio,
+		arg.BannerUrl,
+		arg.Theme,
+		arg.ProfileVisibility,
 	)
-	var i User
+	var i UpdateUserProfileRow
 	err := row.Scan(
 		&i.ID,
-		&i.Phone,
-		&i.PasswordHash,
 		&i.Username,
 		&i.FullName,
 		&i.AvatarUrl,
 		&i.Bio,
-		&i.Role,
-		&i.TrustLevel,
-		&i.IsVerified,
-		&i.IsShadowBanned,
-		&i.LastActiveAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
 		&i.CreatedAt,
-		&i.IsGhostMode,
-		&i.ActivityStreak,
-		&i.StreakUpdatedAt,
-		&i.IsPremium,
-		&i.StreakFreezesRemaining,
-		&i.BoostExpiresAt,
 	)
 	return i, err
 }
@@ -560,7 +812,7 @@ const updateUserTrust = `-- name: UpdateUserTrust :one
 UPDATE users
 SET trust_level = $2
 WHERE id = $1
-RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at
+RETURNING id, phone, password_hash, username, full_name, avatar_url, bio, role, trust_level, is_verified, is_shadow_banned, last_active_at, created_at, is_ghost_mode, activity_streak, streak_updated_at, is_premium, streak_freezes_remaining, boost_expires_at, banner_url, theme, profile_visibility, email
 `
 
 type UpdateUserTrustParams struct {
@@ -591,6 +843,10 @@ func (q *Queries) UpdateUserTrust(ctx context.Context, arg UpdateUserTrustParams
 		&i.IsPremium,
 		&i.StreakFreezesRemaining,
 		&i.BoostExpiresAt,
+		&i.BannerUrl,
+		&i.Theme,
+		&i.ProfileVisibility,
+		&i.Email,
 	)
 	return i, err
 }

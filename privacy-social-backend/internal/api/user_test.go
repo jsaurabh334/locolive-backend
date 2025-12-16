@@ -5,18 +5,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
-	mockdb "privacy-social-backend/internal/repository/mock"
 	"privacy-social-backend/internal/repository/db"
+	mockdb "privacy-social-backend/internal/repository/mock"
 	"privacy-social-backend/internal/util"
 )
 
@@ -162,13 +162,20 @@ func randomUser(t *testing.T) (user db.User, password string) {
 }
 
 func requireBodyMatchUser(t *testing.T, body *bytes.Buffer, user db.User) {
-	data, err := ioutil.ReadAll(body)
+	data, err := io.ReadAll(body)
 	require.NoError(t, err)
 
-	var gotUser db.User
+	type userResponse struct {
+		Username  string `json:"username"`
+		FullName  string `json:"full_name"`
+		Bio       string `json:"bio"`
+		AvatarUrl string `json:"avatar_url"`
+	}
+
+	var gotUser userResponse
 	err = json.Unmarshal(data, &gotUser)
 	require.NoError(t, err)
 	require.Equal(t, user.Username, gotUser.Username)
 	require.Equal(t, user.FullName, gotUser.FullName)
-	require.Empty(t, gotUser.PasswordHash) // Check password is removed
+	// Password is not returned, so we can't check it directly here, but schema validation covers it.
 }

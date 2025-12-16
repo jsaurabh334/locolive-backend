@@ -21,20 +21,30 @@ type createUserRequest struct {
 }
 
 type userResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Phone     string    `json:"phone"`
-	Username  string    `json:"username"`
-	FullName  string    `json:"full_name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                uuid.UUID `json:"id"`
+	Phone             string    `json:"phone"`
+	Username          string    `json:"username"`
+	FullName          string    `json:"full_name"`
+	Bio               string    `json:"bio"`
+	AvatarUrl         string    `json:"avatar_url"`
+	BannerUrl         string    `json:"banner_url"`
+	Theme             string    `json:"theme"`
+	ProfileVisibility string    `json:"profile_visibility"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 func newUserResponse(user db.User) userResponse {
 	return userResponse{
-		ID:        user.ID,
-		Phone:     user.Phone,
-		Username:  user.Username,
-		FullName:  user.FullName,
-		CreatedAt: user.CreatedAt,
+		ID:                user.ID,
+		Phone:             user.Phone,
+		Username:          user.Username,
+		FullName:          user.FullName,
+		Bio:               user.Bio.String,
+		AvatarUrl:         user.AvatarUrl.String,
+		BannerUrl:         user.BannerUrl.String,
+		Theme:             user.Theme.String,
+		ProfileVisibility: user.ProfileVisibility.String,
+		CreatedAt:         user.CreatedAt,
 	}
 }
 
@@ -112,24 +122,18 @@ func (server *Server) loginUser(ctx *gin.Context) {
 	}
 
 	// Create access token with user's actual ID
-	accessToken, accessPayload, err := server.tokenMaker.CreateToken(user.Username, server.config.AccessTokenDuration)
+	accessToken, accessPayload, err := server.tokenMaker.CreateToken(user.Username, user.ID, server.config.AccessTokenDuration)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-
-	// Override the random ID with actual user ID
-	accessPayload.ID = user.ID
 
 	// Create refresh token
-	refreshToken, refreshPayload, err := server.tokenMaker.CreateToken(user.Username, server.config.RefreshTokenDuration)
+	refreshToken, refreshPayload, err := server.tokenMaker.CreateToken(user.Username, user.ID, server.config.RefreshTokenDuration)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-
-	// Override the random ID with actual user ID
-	refreshPayload.ID = user.ID
 
 	session, err := server.store.CreateSession(ctx, db.CreateSessionParams{
 		ID:           refreshPayload.ID,
@@ -154,4 +158,24 @@ func (server *Server) loginUser(ctx *gin.Context) {
 		User:                  newUserResponse(user),
 	}
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+type searchUsersRequest struct {
+	Query string `form:"q" binding:"required"`
+}
+
+func (server *Server) searchUsers(ctx *gin.Context) {
+	var req searchUsersRequest
+	if err := ctx.ShouldBindQuery(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	users, err := server.store.SearchUsers(ctx, req.Query)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, users)
 }

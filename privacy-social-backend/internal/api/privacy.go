@@ -4,20 +4,182 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog/log"
+	"github.com/google/uuid"
 
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
-	"privacy-social-backend/internal/util"
 )
 
-type toggleGhostModeRequest struct {
-	Enabled bool `json:"enabled" binding:"required"`
+// Privacy Settings Handlers
+
+type PrivacySettingResponse struct {
+	UserID           uuid.UUID `json:"user_id"`
+	WhoCanMessage    string    `json:"who_can_message"`
+	WhoCanSeeStories string    `json:"who_can_see_stories"`
+	ShowLocation     bool      `json:"show_location"`
 }
 
-// toggleGhostMode enables or disables ghost mode for the authenticated user
+func newPrivacySettingResponse(p db.PrivacySetting) PrivacySettingResponse {
+	return PrivacySettingResponse{
+		UserID:           p.UserID,
+		WhoCanMessage:    p.WhoCanMessage.String,
+		WhoCanSeeStories: p.WhoCanSeeStories.String,
+		ShowLocation:     p.ShowLocation.Bool,
+	}
+}
+
+type updatePrivacySettingsRequest struct {
+	WhoCanMessage    string `json:"who_can_message" binding:"oneof=everyone connections nobody"`
+	WhoCanSeeStories string `json:"who_can_see_stories" binding:"oneof=everyone connections nobody"`
+	ShowLocation     *bool  `json:"show_location" binding:"required"`
+}
+
+func (server *Server) updatePrivacySettings(ctx *gin.Context) {
+	var req updatePrivacySettingsRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	settings, err := server.store.UpsertPrivacySettings(ctx, db.UpsertPrivacySettingsParams{
+		UserID:           payload.UserID,
+		WhoCanMessage:    sql.NullString{String: req.WhoCanMessage, Valid: true},
+		WhoCanSeeStories: sql.NullString{String: req.WhoCanSeeStories, Valid: true},
+		ShowLocation:     sql.NullBool{Bool: *req.ShowLocation, Valid: true},
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, newPrivacySettingResponse(settings))
+}
+
+func (server *Server) getPrivacySettings(ctx *gin.Context) {
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	settings, err := server.store.GetPrivacySettings(ctx, payload.UserID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Return default settings if none exist
+			ctx.JSON(http.StatusOK, PrivacySettingResponse{
+				UserID:           payload.UserID,
+				WhoCanMessage:    "connections",
+				WhoCanSeeStories: "connections",
+				ShowLocation:     true,
+			})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, newPrivacySettingResponse(settings))
+}
+
+// Blocking Handlers
+
+type blockUserRequest struct {
+	UserID string `json:"user_id" binding:"required,uuid"`
+}
+
+func (server *Server) blockUser(ctx *gin.Context) {
+	var req blockUserRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	blockID, _ := uuid.Parse(req.UserID)
+
+	// Prevent blocking self
+	if payload.UserID == blockID {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "cannot block yourself"})
+		return
+	}
+
+	_, err := server.store.BlockUser(ctx, db.BlockUserParams{
+		BlockerID: payload.UserID,
+		BlockedID: blockID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Invalidate caches
+	server.redis.Del(context.Background(), "profile:"+payload.UserID.String())
+	server.redis.Del(context.Background(), "profile:"+blockID.String())
+	server.redis.Del(context.Background(), "connections:"+payload.UserID.String())
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "user blocked"})
+}
+
+func (server *Server) unblockUser(ctx *gin.Context) {
+	targetIDStr := ctx.Param("id")
+	targetID, err := uuid.Parse(targetIDStr)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	err = server.store.UnblockUser(ctx, db.UnblockUserParams{
+		BlockerID: payload.UserID,
+		BlockedID: targetID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "user unblocked"})
+}
+
+type BlockedUserResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	FullName  string    `json:"full_name"`
+	AvatarUrl string    `json:"avatar_url"`
+	BlockedAt time.Time `json:"blocked_at"`
+}
+
+func (server *Server) getBlockedUsers(ctx *gin.Context) {
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	users, err := server.store.GetBlockedUsers(ctx, payload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	rsp := make([]BlockedUserResponse, len(users))
+	for i, u := range users {
+		rsp[i] = BlockedUserResponse{
+			ID:        u.ID,
+			Username:  u.Username,
+			FullName:  u.FullName,
+			AvatarUrl: u.AvatarUrl.String,
+			BlockedAt: u.BlockedAt.Time,
+		}
+	}
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+// Location Privacy
+
+type toggleGhostModeRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 func (server *Server) toggleGhostMode(ctx *gin.Context) {
 	var req toggleGhostModeRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -25,10 +187,11 @@ func (server *Server) toggleGhostMode(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	user, err := server.store.ToggleGhostMode(ctx, db.ToggleGhostModeParams{
-		ID:          authPayload.ID,
+	// Call existing ToggleGhostMode query
+	_, err := server.store.ToggleGhostMode(ctx, db.ToggleGhostModeParams{
+		ID:          payload.UserID,
 		IsGhostMode: req.Enabled,
 	})
 	if err != nil {
@@ -36,77 +199,24 @@ func (server *Server) toggleGhostMode(ctx *gin.Context) {
 		return
 	}
 
-	log.Info().
-		Str("user_id", user.ID.String()).
-		Bool("ghost_mode", user.IsGhostMode).
-		Msg("Ghost mode toggled")
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"ghost_mode": user.IsGhostMode,
-		"message":    "Ghost mode updated successfully",
-	})
+	status := "enabled"
+	if !req.Enabled {
+		status = "disabled"
+	}
+	ctx.JSON(http.StatusOK, gin.H{"message": "ghost mode " + status})
 }
 
-type panicModeRequest struct {
-	Password string `json:"password" binding:"required,min=6"`
-}
-
-// panicMode deletes all user data immediately (irreversible)
 func (server *Server) panicMode(ctx *gin.Context) {
-	var req panicModeRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, errorResponse(err))
-		return
-	}
+	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-
-	// Verify password before proceeding
-	user, err := server.store.GetUserByID(ctx, authPayload.ID)
+	// Delete all user data
+	err := server.store.DeleteAllUserData(ctx, payload.UserID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			ctx.JSON(http.StatusNotFound, errorResponse(err))
-			return
-		}
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
 
-	err = util.CheckPassword(req.Password, user.PasswordHash)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password"})
-		return
-	}
+	// Invalidate token/session would be good here but handled by expiry usually
 
-	// Clear all Redis cache for this user
-	// Cache keys: feed:{geohash}, crossings:{user_id}, messages:{user_id}:*
-	redisCtx := context.Background()
-	
-	// Clear crossing cache
-	crossingKey := "crossings:" + authPayload.ID.String()
-	server.redis.Del(redisCtx, crossingKey)
-
-	// Clear message cache (pattern match)
-	messagePattern := "messages:*" + authPayload.ID.String() + "*"
-	iter := server.redis.Scan(redisCtx, 0, messagePattern, 0).Iterator()
-	for iter.Next(redisCtx) {
-		server.redis.Del(redisCtx, iter.Val())
-	}
-
-	// Delete all user data (CASCADE will handle related records)
-	err = server.store.DeleteAllUserData(ctx, authPayload.ID)
-	if err != nil {
-		log.Error().Err(err).Str("user_id", authPayload.ID.String()).Msg("Failed to delete user data in panic mode")
-		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
-		return
-	}
-
-	log.Warn().
-		Str("user_id", authPayload.ID.String()).
-		Str("phone", user.Phone).
-		Msg("PANIC MODE ACTIVATED - All user data deleted")
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "All your data has been permanently deleted",
-	})
+	ctx.JSON(http.StatusOK, gin.H{"message": "all data deleted"})
 }

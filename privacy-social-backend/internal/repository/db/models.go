@@ -231,6 +231,13 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type BlockedUser struct {
+	ID        uuid.UUID    `json:"id"`
+	BlockerID uuid.UUID    `json:"blocker_id"`
+	BlockedID uuid.UUID    `json:"blocked_id"`
+	CreatedAt sql.NullTime `json:"created_at"`
+}
+
 type Connection struct {
 	RequesterID uuid.UUID        `json:"requester_id"`
 	TargetID    uuid.UUID        `json:"target_id"`
@@ -259,12 +266,21 @@ type Location struct {
 }
 
 type Message struct {
-	ID         uuid.UUID `json:"id"`
-	SenderID   uuid.UUID `json:"sender_id"`
-	ReceiverID uuid.UUID `json:"receiver_id"`
-	Content    string    `json:"content"`
-	IsRead     bool      `json:"is_read"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         uuid.UUID    `json:"id"`
+	SenderID   uuid.UUID    `json:"sender_id"`
+	ReceiverID uuid.UUID    `json:"receiver_id"`
+	Content    string       `json:"content"`
+	IsRead     bool         `json:"is_read"`
+	CreatedAt  time.Time    `json:"created_at"`
+	ReadAt     sql.NullTime `json:"read_at"`
+}
+
+type MessageReaction struct {
+	ID        uuid.UUID `json:"id"`
+	MessageID uuid.UUID `json:"message_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Emoji     string    `json:"emoji"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Notification struct {
@@ -278,6 +294,15 @@ type Notification struct {
 	RelatedCrossingID uuid.NullUUID    `json:"related_crossing_id"`
 	IsRead            bool             `json:"is_read"`
 	CreatedAt         time.Time        `json:"created_at"`
+}
+
+type PrivacySetting struct {
+	UserID           uuid.UUID      `json:"user_id"`
+	WhoCanMessage    sql.NullString `json:"who_can_message"`
+	WhoCanSeeStories sql.NullString `json:"who_can_see_stories"`
+	ShowLocation     sql.NullBool   `json:"show_location"`
+	CreatedAt        sql.NullTime   `json:"created_at"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }
 
 type Report struct {
@@ -318,6 +343,13 @@ type Story struct {
 	IsPremium    sql.NullBool      `json:"is_premium"`
 }
 
+type StoryMention struct {
+	ID              uuid.UUID `json:"id"`
+	StoryID         uuid.UUID `json:"story_id"`
+	MentionedUserID uuid.UUID `json:"mentioned_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type StoryReaction struct {
 	ID        uuid.UUID `json:"id"`
 	StoryID   uuid.UUID `json:"story_id"`
@@ -353,4 +385,8 @@ type User struct {
 	IsPremium              sql.NullBool   `json:"is_premium"`
 	StreakFreezesRemaining int32          `json:"streak_freezes_remaining"`
 	BoostExpiresAt         sql.NullTime   `json:"boost_expires_at"`
+	BannerUrl              sql.NullString `json:"banner_url"`
+	Theme                  sql.NullString `json:"theme"`
+	ProfileVisibility      sql.NullString `json:"profile_visibility"`
+	Email                  sql.NullString `json:"email"`
 }

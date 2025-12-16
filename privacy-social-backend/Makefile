@@ -24,10 +24,13 @@ migratedown:
 sqlc:
 	sqlc generate
 
+mock:
+	~/go/bin/mockgen -package mockdb -destination internal/repository/mock/store.go privacy-social-backend/internal/repository Store
+
 test:
 	go test -v -cover ./...
 
 server:
 	go run cmd/server/main.go
 
-.PHONY: network postgres redis createdb dropdb migrateup migratedown sqlc test server
+.PHONY: network postgres redis createdb dropdb migrateup migratedown sqlc mock test server

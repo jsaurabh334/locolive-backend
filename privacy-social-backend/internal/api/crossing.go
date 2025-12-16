@@ -18,7 +18,7 @@ func (server *Server) getCrossings(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
 	// Try Redis cache first
-	cacheKey := "crossings:" + authPayload.ID.String()
+	cacheKey := "crossings:" + authPayload.UserID.String()
 	cachedData, err := server.redis.Get(context.Background(), cacheKey).Result()
 	if err == nil && cachedData != "" {
 		ctx.Header("X-Cache", "HIT")
@@ -26,7 +26,7 @@ func (server *Server) getCrossings(ctx *gin.Context) {
 		return
 	}
 
-	crossings, err := server.store.GetCrossingsForUser(ctx, authPayload.ID)
+	crossings, err := server.store.GetCrossingsForUser(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return

@@ -63,7 +63,7 @@ func adminMiddleware(server *Server) gin.HandlerFunc {
 		authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
 		// Get user from database to check role
-		user, err := server.store.GetUserByID(ctx, authPayload.ID)
+		user, err := server.store.GetUserByID(ctx, authPayload.UserID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				ctx.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse(ErrNotAdmin))
@@ -80,5 +80,22 @@ func adminMiddleware(server *Server) gin.HandlerFunc {
 		}
 
 		ctx.Next()
+	}
+}
+
+// corsMiddleware handles the CORS middleware
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
 	}
 }

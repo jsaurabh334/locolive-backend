@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	locationPrecision = 7             // +/- 76m approx
+	locationPrecision = 7                // +/- 76m approx
 	bucketDuration    = 10 * time.Minute // 10 min time buckets
 	locationTTL       = 24 * time.Hour
 )
@@ -38,20 +38,20 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 		hash = hash[:locationPrecision]
 	}
 
-    // Safety Check: Fake GPS
-    val := server.safety.ValidateUserMovement(ctx, authPayload.ID.String(), req.Latitude, req.Longitude)
-    if !val.Allowed {
-        if val.ShouldBan {
-            server.store.BanUser(ctx, db.BanUserParams{
-                ID:             authPayload.ID,
-                IsShadowBanned: true,
-            })
-            log.Warn().Str("user_id", authPayload.ID.String()).Msg("User shadow-banned for fake GPS")
-        }
-        // Return success to maintain illusion, but do NOT save the fake location 
-        ctx.JSON(http.StatusOK, gin.H{"status": "updated"})
-        return
-    }
+	// Safety Check: Fake GPS
+	val := server.safety.ValidateUserMovement(ctx, authPayload.UserID.String(), req.Latitude, req.Longitude)
+	if !val.Allowed {
+		if val.ShouldBan {
+			server.store.BanUser(ctx, db.BanUserParams{
+				ID:             authPayload.UserID,
+				IsShadowBanned: true,
+			})
+			log.Warn().Str("user_id", authPayload.UserID.String()).Msg("User shadow-banned for fake GPS")
+		}
+		// Return success to maintain illusion, but do NOT save the fake location
+		ctx.JSON(http.StatusOK, gin.H{"status": "updated"})
+		return
+	}
 
 	// Privacy: Time Bucket
 	now := time.Now().UTC()
@@ -62,26 +62,26 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 
 	// Privacy: Expiry
 	// expiresAt defined above
-	
+
 	_, err := server.store.CreateLocation(ctx, db.CreateLocationParams{
-		UserID:     authPayload.ID,
+		UserID:     authPayload.UserID,
 		Geohash:    hash,
 		Lng:        req.Longitude, // @lng
 		Lat:        req.Latitude,  // @lat
 		TimeBucket: bucketTime,
 		ExpiresAt:  expiresAt,
 	})
-    
-    // Wait, I can't check generated code easily without reading it.
-    // Better to update the SQL query to use named parameters @lat, @lng.
-	
+
+	// Wait, I can't check generated code easily without reading it.
+	// Better to update the SQL query to use named parameters @lat, @lng.
+
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
 
 	// Update user activity (for visibility system)
-	_, err = server.store.UpdateUserActivity(ctx, authPayload.ID)
+	_, err = server.store.UpdateUserActivity(ctx, authPayload.UserID)
 	if err != nil {
 		// Log error but don't fail the request
 		log.Error().Err(err).Msg("Failed to update user activity on location ping")

@@ -12,7 +12,7 @@ import (
 func (server *Server) getActivityStatus(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	status, err := server.store.GetUserActivityStatus(ctx, authPayload.ID)
+	status, err := server.store.GetUserActivityStatus(ctx, authPayload.UserID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
