@@ -2,6 +2,7 @@ import React from 'react';
 import { useFeed } from './useFeed';
 import { Link, useNavigate } from 'react-router-dom';
 import Avatar from '../../components/ui/Avatar';
+import { useLocation } from '../../context/LocationContext';
 
 const StoryItem = ({ group }) => {
     const navigate = useNavigate();
@@ -61,6 +62,7 @@ const AddStoryButton = () => (
 
 const StoryRail = () => {
     const { data: feed, isLoading } = useFeed();
+    const { error: locationError, location } = useLocation();
 
     // Group stories by user
     const groupedStories = React.useMemo(() => {
@@ -86,6 +88,19 @@ const StoryRail = () => {
         return Object.values(groups);
     }, [feed]);
 
+    if (locationError) {
+        return (
+            <div className="w-full overflow-x-auto pb-4 pt-2 no-scrollbar px-4">
+                <div className="flex items-center gap-4">
+                    <AddStoryButton />
+                    <div className="text-xs text-red-400 border border-red-400/20 bg-red-400/10 px-3 py-2 rounded-lg whitespace-nowrap">
+                        Enable location to see stories
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="w-full overflow-x-auto pb-4 pt-2 no-scrollbar">
             <div className="flex space-x-4 px-4">
@@ -98,6 +113,10 @@ const StoryRail = () => {
                             <div className="h-3 w-12 bg-neutral-800 rounded"></div>
                         </div>
                     ))
+                ) : groupedStories.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center min-w-[100px] text-text-tertiary">
+                        <span className="text-xs">No nearby stories</span>
+                    </div>
                 ) : (
                     groupedStories.map((group) => (
                         <StoryItem key={group.user.id} group={group} />

@@ -273,6 +273,7 @@ type Message struct {
 	IsRead     bool         `json:"is_read"`
 	CreatedAt  time.Time    `json:"created_at"`
 	ReadAt     sql.NullTime `json:"read_at"`
+	ExpiresAt  sql.NullTime `json:"expires_at"`
 }
 
 type MessageReaction struct {

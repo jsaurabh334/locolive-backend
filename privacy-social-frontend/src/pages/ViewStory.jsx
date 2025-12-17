@@ -271,9 +271,21 @@ const ViewStory = () => {
                     </div>
                     <div className="flex-1">
                         <p className="text-white font-semibold">{String(currentStory.username || 'Anonymous')}</p>
-                        <p className="text-white/70 text-sm">
-                            {new Date(currentStory.created_at).toLocaleDateString()}
-                        </p>
+                        <div className="flex flex-col">
+                            <p className="text-white/70 text-xs">
+                                {new Date(currentStory.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            <p className="text-red-300 text-[10px] font-medium mt-0.5">
+                                Expires in {(() => {
+                                    if (!currentStory.expires_at) return '24h';
+                                    const diff = new Date(currentStory.expires_at) - new Date();
+                                    if (diff <= 0) return 'Soon';
+                                    const h = Math.floor(diff / 3600000);
+                                    const m = Math.floor((diff % 3600000) / 60000);
+                                    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                                })()}
+                            </p>
+                        </div>
                     </div>
                 </div>
 

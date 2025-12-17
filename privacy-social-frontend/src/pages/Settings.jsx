@@ -73,13 +73,21 @@ const ProfileSettings = ({ user }) => {
     // Update local state when user prop changes (e.g. after refetch)
     useEffect(() => {
         if (user) {
-            setFormData({
-                full_name: user.full_name || '',
-                bio: user.bio || '',
-                username: user.username || ''
+            setFormData(prev => {
+                // Only update if values actually changed to avoid loop
+                if (prev.full_name === user.full_name &&
+                    prev.bio === user.bio &&
+                    prev.username === user.username) {
+                    return prev;
+                }
+                return {
+                    full_name: user.full_name || '',
+                    bio: user.bio || '',
+                    username: user.username || ''
+                };
             });
         }
-    }, [user]);
+    }, [user?.full_name, user?.bio, user?.username]);
 
     const updateProfileMutation = useMutation({
         mutationFn: (data) => apiClient.updateProfile(data),
@@ -328,6 +336,48 @@ const BlockedUsersList = () => {
 
 // Account Settings Tab
 const AccountSettings = ({ user }) => {
+    const queryClient = useQueryClient();
+    const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+
+    // Email State
+    const [email, setEmail] = useState('');
+    useEffect(() => {
+        if (user?.email) setEmail(user.email);
+    }, [user]);
+
+    // Password State
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+
+    const updateEmailMutation = useMutation({
+        mutationFn: (email) => apiClient.updateEmail(email),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries(['auth-user']);
+            queryClient.setQueryData(['auth-user'], (old) => ({ ...old, email: data.email }));
+            setIsEmailModalOpen(false);
+            alert("Email updated successfully!");
+        },
+        onError: (err) => {
+            console.error("Failed to update email", err);
+            alert(err.response?.data?.error || "Failed to update email");
+        }
+    });
+
+    const updatePasswordMutation = useMutation({
+        mutationFn: ({ current, newPass }) => apiClient.updatePassword(current, newPass),
+        onSuccess: () => {
+            setIsPasswordModalOpen(false);
+            setCurrentPassword('');
+            setNewPassword('');
+            alert("Password updated successfully!");
+        },
+        onError: (err) => {
+            console.error("Failed to update password", err);
+            alert(err.response?.data?.error || "Failed to update password");
+        }
+    });
+
     return (
         <div className="max-w-2xl space-y-6">
             <div>
@@ -342,7 +392,7 @@ const AccountSettings = ({ user }) => {
                             <p className="font-medium text-text-primary">Email</p>
                             <p className="text-sm text-text-secondary">{user?.email || 'Not set'}</p>
                         </div>
-                        <Button variant="ghost" size="sm">Change</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setIsEmailModalOpen(true)}>Change</Button>
                     </div>
 
                     <div className="flex items-center justify-between p-4 bg-surface-hover rounded-lg">
@@ -350,7 +400,7 @@ const AccountSettings = ({ user }) => {
                             <p className="font-medium text-text-primary">Password</p>
                             <p className="text-sm text-text-secondary">••••••••</p>
                         </div>
-                        <Button variant="ghost" size="sm">Change</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setIsPasswordModalOpen(true)}>Change</Button>
                     </div>
                 </div>
             </Card>
@@ -363,6 +413,66 @@ const AccountSettings = ({ user }) => {
                     </Button>
                 </div>
             </Card>
+
+            {/* Email Modal */}
+            {isEmailModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <Card className="w-full max-w-md space-y-4">
+                        <h3 className="font-bold text-lg text-text-primary">Update Email</h3>
+                        <input
+                            type="email"
+                            placeholder="New Email Address"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full p-2 bg-surface border border-border rounded-lg text-text-primary"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button variant="ghost" onClick={() => setIsEmailModalOpen(false)}>Cancel</Button>
+                            <Button
+                                variant="primary"
+                                onClick={() => updateEmailMutation.mutate(email)}
+                                isLoading={updateEmailMutation.isPending}
+                            >
+                                Save
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {/* Password Modal */}
+            {isPasswordModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <Card className="w-full max-w-md space-y-4">
+                        <h3 className="font-bold text-lg text-text-primary">Change Password</h3>
+                        <input
+                            type="password"
+                            placeholder="Current Password"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            className="w-full p-2 bg-surface border border-border rounded-lg text-text-primary"
+                        />
+                        <input
+                            type="password"
+                            placeholder="New Password (min 6 chars)"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full p-2 bg-surface border border-border rounded-lg text-text-primary"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button variant="ghost" onClick={() => setIsPasswordModalOpen(false)}>Cancel</Button>
+                            <Button
+                                variant="primary"
+                                onClick={() => updatePasswordMutation.mutate({ current: currentPassword, newPass: newPassword })}
+                                isLoading={updatePasswordMutation.isPending}
+                                disabled={!currentPassword || newPassword.length < 6}
+                            >
+                                Update Password
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 };

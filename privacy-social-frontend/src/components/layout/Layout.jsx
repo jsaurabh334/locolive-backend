@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
+import RightSidebar from './RightSidebar';
 
 const Layout = () => {
     return (
@@ -15,27 +16,7 @@ const Layout = () => {
                     <Outlet />
                 </div>
 
-                {/* Desktop Right Sidebar Placeholder (Future) */}
-                <div className="hidden xl:block fixed right-0 top-0 bottom-0 w-80 border-l border-border bg-surface/30 backdrop-blur-sm p-6 overflow-y-auto">
-                    {/* Placeholder for "Who to follow", "Trending", or "Chat list" */}
-                    <div className="space-y-6">
-                        <section>
-                            <h3 className="text-sm font-bold text-text-secondary mb-4 uppercase tracking-wider">Suggested for you</h3>
-                            {/* Skeletons/Placeholders */}
-                            <div className="space-y-4">
-                                {[1, 2, 3].map((i) => (
-                                    <div key={i} className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-neutral-800" />
-                                        <div className="flex-1">
-                                            <div className="h-3 w-24 bg-neutral-800 rounded mb-1" />
-                                            <div className="h-2 w-16 bg-neutral-800 rounded" />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
-                    </div>
-                </div>
+                <RightSidebar />
             </main>
 
             {/* Mobile Bottom Nav */}

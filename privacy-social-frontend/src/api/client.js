@@ -21,6 +21,8 @@ const apiService = {
     updateProfile: (data) => apiClient.put('/profile', data),
     getPrivacySettings: () => apiClient.get('/privacy'),
     updatePrivacySettings: (data) => apiClient.put('/privacy', data),
+    updateEmail: (email) => apiClient.put('/account/email', { email }),
+    updatePassword: (currentPassword, newPassword) => apiClient.put('/account/password', { current_password: currentPassword, new_password: newPassword }),
     blockUser: (userId) => apiClient.post('/users/block', { user_id: userId }),
     unblockUser: (userId) => apiClient.delete(`/users/block/${userId}`),
     getBlockedUsers: () => apiClient.get('/users/blocked'),
@@ -34,18 +36,23 @@ const apiService = {
     listConnections: () => apiClient.get('/connections'),
     listPendingRequests: () => apiClient.get('/connections/requests'),
     listSentRequests: () => apiClient.get('/connections/sent'),
-    sendConnectionRequest: (userId) => apiClient.post('/connections/request', { target_id: userId }),
-    updateConnection: (id, status) => apiClient.post('/connections/update', { target_id: id, status }),
+    getSuggestedConnections: () => apiClient.get('/connections/suggested'),
+    sendConnectionRequest: (userId) => apiClient.post('/connections/request', { target_user_id: userId }),
+    updateConnection: (id, status) => apiClient.post('/connections/update', { requester_id: id, status }),
     removeConnection: (id) => apiClient.delete(`/connections/${id}`),
 
     // Messaging
+    getConversations: () => apiClient.get('/conversations'),
     getMessages: (userId) => apiClient.get(`/messages?user_id=${userId}`),
     sendMessage: (data) => apiClient.post('/messages', data),
     editMessage: (id, content) => apiClient.put(`/messages/${id}`, { content }),
     deleteMessage: (id) => apiClient.delete(`/messages/${id}`),
+    deleteConversation: (userId) => apiClient.delete(`/conversations/${userId}`),
     markConversationRead: (userId) => apiClient.put(`/messages/read/${userId}`),
-    addMessageReaction: (messageId, emoji) => apiClient.post(`/messages/${messageId}/react`, { emoji }),
-    removeMessageReaction: (messageId, emoji) => apiClient.delete(`/messages/${messageId}/react`, { data: { emoji } }),
+    addMessageReaction: (messageId, emoji) => apiClient.post(`/messages/${messageId}/reactions`, { emoji }),
+    removeMessageReaction: (messageId, emoji) => apiClient.delete(`/messages/${messageId}/reactions`, { data: { emoji } }),
+    getUnreadMessageCount: () => apiClient.get('/messages/unread-count'),
+
 
     // Stories
     getFeed: (page = 1, lat, lng) => apiClient.get(`/feed?page=${page}&latitude=${lat}&longitude=${lng}`),

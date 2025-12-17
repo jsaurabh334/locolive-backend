@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	"privacy-social-backend/internal/repository/db"
-	"privacy-social-backend/internal/token"
 )
 
 type shareStoryRequest struct {
@@ -25,8 +24,11 @@ func (server *Server) shareStory(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-	storyID, _ := uuid.Parse(req.StoryID)
+	authPayload := getAuthPayload(ctx)
+	storyID, ok := parseUUIDParam(ctx, req.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	// Get story to create share message
 	story, err := server.store.GetStoryByID(ctx, storyID)
@@ -45,15 +47,22 @@ func (server *Server) shareStory(ctx *gin.Context) {
 			continue
 		}
 
+		// Check if users are connected before allowing share
+		if err := server.checkConnection(ctx, authPayload.UserID, targetUserID); err != nil {
+			continue // Skip non-connected users
+		}
+
 		// Create message with story link in content
 		_, err = server.store.CreateMessage(ctx, db.CreateMessageParams{
 			SenderID:   authPayload.UserID,
 			ReceiverID: targetUserID,
 			Content:    shareText,
 		})
-		if err == nil {
-			successCount++
+		if err != nil {
+			continue
 		}
+
+		successCount++
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
@@ -110,7 +119,18 @@ func (server *Server) createStoryMentions(ctx *gin.Context, storyID uuid.UUID, c
 			continue // Skip on error
 		}
 
-		// TODO: Send notification to mentioned user
+		// Send notification to mentioned user
+		_, err = server.store.CreateNotification(ctx, db.CreateNotificationParams{
+			UserID:         user.ID,
+			Type:           "story_mention",
+			Title:          "You were mentioned!",
+			Message:        "You were mentioned in a story",
+			RelatedStoryID: uuid.NullUUID{UUID: storyID, Valid: true},
+		})
+		if err != nil {
+			// Log error but don't fail the whole operation
+			continue
+		}
 	}
 
 	return nil

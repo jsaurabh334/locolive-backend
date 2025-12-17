@@ -136,7 +136,18 @@ const Profile = () => {
                         <div className="flex flex-col gap-3">
                             <div className="flex gap-3">
                                 {connectionStatus === 'connected' ? (
-                                    <Button variant="secondary" width="full" disabled>Friends</Button>
+                                    <Button
+                                        variant="secondary"
+                                        width="full"
+                                        onClick={() => {
+                                            if (window.confirm(`Remove ${userDisplay.username} from connections?`)) {
+                                                removeConnection.mutate(profile.id);
+                                            }
+                                        }}
+                                        isLoading={removeConnection.isPending}
+                                    >
+                                        Friends
+                                    </Button>
                                 ) : connectionStatus === 'incoming' ? (
                                     <Button variant="primary" width="full" onClick={() => navigate('/connections')}>Respond</Button>
                                 ) : connectionStatus === 'sent' ? (

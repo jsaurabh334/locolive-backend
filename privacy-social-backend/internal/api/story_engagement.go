@@ -5,10 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"privacy-social-backend/internal/repository/db"
-	"privacy-social-backend/internal/token"
 )
 
 type viewStoryRequest struct {
@@ -23,8 +21,11 @@ func (server *Server) viewStory(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-	storyID, _ := uuid.Parse(req.StoryID)
+	authPayload := getAuthPayload(ctx)
+	storyID, ok := parseUUIDParam(ctx, req.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	view, err := server.store.CreateStoryView(ctx, db.CreateStoryViewParams{
 		StoryID: storyID,
@@ -46,8 +47,11 @@ func (server *Server) getStoryViewers(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-	storyID, _ := uuid.Parse(req.StoryID)
+	authPayload := getAuthPayload(ctx)
+	storyID, ok := parseUUIDParam(ctx, req.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	// Verify user owns the story
 	story, err := server.store.GetStoryByID(ctx, storyID)
@@ -93,8 +97,11 @@ func (server *Server) reactToStory(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-	storyID, _ := uuid.Parse(uriReq.StoryID)
+	authPayload := getAuthPayload(ctx)
+	storyID, ok := parseUUIDParam(ctx, uriReq.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	reaction, err := server.store.CreateStoryReaction(ctx, db.CreateStoryReactionParams{
 		StoryID: storyID,
@@ -117,8 +124,11 @@ func (server *Server) deleteStoryReaction(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-	storyID, _ := uuid.Parse(req.StoryID)
+	authPayload := getAuthPayload(ctx)
+	storyID, ok := parseUUIDParam(ctx, req.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	err := server.store.DeleteStoryReaction(ctx, db.DeleteStoryReactionParams{
 		StoryID: storyID,
@@ -140,7 +150,10 @@ func (server *Server) getStoryReactions(ctx *gin.Context) {
 		return
 	}
 
-	storyID, _ := uuid.Parse(req.StoryID)
+	storyID, ok := parseUUIDParam(ctx, req.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	reactions, err := server.store.GetStoryReactions(ctx, storyID)
 	if err != nil {

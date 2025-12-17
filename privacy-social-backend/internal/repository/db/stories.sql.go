@@ -106,9 +106,8 @@ WHERE
   c.status = 'accepted'
   AND s.expires_at > now()
   AND u.is_shadow_banned = false
-  -- Strict Streak Rule applies to connections too? User says "Profile is NOT visible"
-  -- Assuming this applies everywhere
-  AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+  -- Strict Streak Rule (DISABLED)
+  -- AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
 ORDER BY s.created_at DESC
 `
 
@@ -179,7 +178,6 @@ JOIN users u ON s.user_id = u.id
 WHERE s.geom && ST_MakeEnvelope($1::float8, $2::float8, $3::float8, $4::float8, 4326)
 AND s.expires_at > now()
 AND u.is_shadow_banned = false
-AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
 AND NOT EXISTS (
     SELECT 1 FROM blocked_users bu 
     WHERE (bu.blocker_id = $5 AND bu.blocked_id = s.user_id)
@@ -187,6 +185,9 @@ AND NOT EXISTS (
 )
 AND (
     s.user_id = $5
+    OR
+    -- Fallback: If no privacy settings exist, default to PUBLIC
+    NOT EXISTS (SELECT 1 FROM privacy_settings ps WHERE ps.user_id = s.user_id)
     OR
     EXISTS (
         SELECT 1 FROM privacy_settings ps 
@@ -234,6 +235,7 @@ type GetStoriesInBoundsRow struct {
 }
 
 // Get stories within a bounding box for map view
+// AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
 func (q *Queries) GetStoriesInBounds(ctx context.Context, arg GetStoriesInBoundsParams) ([]GetStoriesInBoundsRow, error) {
 	rows, err := q.db.QueryContext(ctx, getStoriesInBounds,
 		arg.West,
@@ -290,10 +292,11 @@ WHERE
     $3
   )
   AND s.expires_at > now()
-  AND (s.is_anonymous = false OR s.user_id = $4)
+  -- Allow anonymous stories (handled in presentation)
+  -- AND (s.is_anonymous = false OR s.user_id = @user_id)
   AND u.is_shadow_banned = false
-  -- Strict Streak Rule
-  AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+  -- Strict Streak Rule (DISABLED)
+  -- AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
   -- Block Logic: Exclude if blocked by either party (using blocked_users table)
   AND NOT EXISTS (
     SELECT 1 FROM blocked_users bu 
@@ -321,7 +324,10 @@ WHERE
              AND c.status = 'accepted'
           ))
         )
-      )
+       )
+       OR
+       -- Fallback: If no privacy settings exist, default to PUBLIC
+       NOT EXISTS (SELECT 1 FROM privacy_settings ps WHERE ps.user_id = s.user_id)
       -- Fallback: If no privacy settings exist, assume strictly public/default behaviour? 
       -- Ideally, every user has settings. If not, default to 'everyone' + 'show_location'.
       -- But simpler to rely on LEFT JOIN or EXISTS logic assuming rows exist.

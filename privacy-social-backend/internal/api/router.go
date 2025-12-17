@@ -11,9 +11,6 @@ func (server *Server) setupRouter() {
 	// CORS Middleware
 	router.Use(corsMiddleware())
 
-	// CORS Middleware
-	router.Use(corsMiddleware())
-
 	// Enable gzip compression (70% bandwidth reduction)
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
@@ -43,18 +40,30 @@ func (server *Server) setupRouter() {
 	authRoutes.GET("/stories/connections", server.getConnectionStories)
 
 	authRoutes.GET("/connections", server.listConnections)
+	authRoutes.GET("/connections/suggested", server.getSuggestedConnections)
 	authRoutes.GET("/connections/requests", server.listPendingRequests)
 	authRoutes.GET("/connections/sent", server.listSentRequests)
 	authRoutes.POST("/connections/request", server.sendConnectionRequest)
 	authRoutes.POST("/connections/update", server.updateConnection)
 	authRoutes.DELETE("/connections/:id", server.deleteConnection)
+
+	// Notifications
+	authRoutes.GET("/notifications", server.getNotifications)
+	authRoutes.PUT("/notifications/:id/read", server.markNotificationRead)
+	authRoutes.PUT("/notifications/read-all", server.markAllNotificationsRead)
+	authRoutes.GET("/notifications/unread-count", server.getUnreadCount)
+
+	// Chat & Messages
+	authRoutes.GET("/conversations", server.getConversationList)
 	authRoutes.GET("/messages", server.messageRateLimiter(), server.getChatHistory)
 	authRoutes.POST("/messages", server.messageRateLimiter(), server.sendMessage)
+	authRoutes.GET("/messages/unread-count", server.getUnreadMessageCount)
+	authRoutes.PUT("/messages/read/:userId", server.markConversationRead)
 	authRoutes.DELETE("/messages/:id", server.deleteMessage)
 	authRoutes.PUT("/messages/:id", server.editMessage)
-	authRoutes.PUT("/messages/read/:userId", server.markConversationRead)
-	authRoutes.POST("/messages/:id/react", server.addReaction)
-	authRoutes.DELETE("/messages/:id/react", server.removeReaction)
+	authRoutes.DELETE("/conversations/:userId", server.deleteConversation)
+	authRoutes.POST("/messages/:id/reactions", server.addReaction)
+	authRoutes.DELETE("/messages/:id/reactions", server.removeReaction)
 	authRoutes.GET("/messages/:id/reactions", server.getMessageReactions)
 	authRoutes.GET("/ws/chat", server.chatWebSocket)
 
@@ -73,12 +82,6 @@ func (server *Server) setupRouter() {
 	authRoutes.GET("/users/blocked", server.getBlockedUsers)
 	authRoutes.PUT("/location/ghost-mode", server.toggleGhostMode)
 	authRoutes.POST("/location/panic", server.panicMode)
-
-	// Notifications
-	authRoutes.GET("/notifications", server.getNotifications)
-	authRoutes.PUT("/notifications/:id/read", server.markNotificationRead)
-	authRoutes.PUT("/notifications/read-all", server.markAllNotificationsRead)
-	authRoutes.GET("/notifications/unread-count", server.getUnreadCount)
 
 	// Story engagement
 	authRoutes.POST("/stories/:id/view", server.viewStory)

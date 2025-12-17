@@ -96,7 +96,10 @@ func (server *Server) blockUser(ctx *gin.Context) {
 	}
 
 	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-	blockID, _ := uuid.Parse(req.UserID)
+	blockID, ok := parseUUIDParam(ctx, req.UserID, "user_id")
+	if !ok {
+		return
+	}
 
 	// Prevent blocking self
 	if payload.UserID == blockID {
@@ -114,8 +117,8 @@ func (server *Server) blockUser(ctx *gin.Context) {
 	}
 
 	// Invalidate caches
-	server.redis.Del(context.Background(), "profile:"+payload.UserID.String())
-	server.redis.Del(context.Background(), "profile:"+blockID.String())
+	server.invalidateProfileCache(payload.UserID)
+	server.invalidateProfileCache(blockID)
 	server.redis.Del(context.Background(), "connections:"+payload.UserID.String())
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "user blocked"})
@@ -123,15 +126,14 @@ func (server *Server) blockUser(ctx *gin.Context) {
 
 func (server *Server) unblockUser(ctx *gin.Context) {
 	targetIDStr := ctx.Param("id")
-	targetID, err := uuid.Parse(targetIDStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+	targetID, ok := parseUUIDParam(ctx, targetIDStr, "user_id")
+	if !ok {
 		return
 	}
 
 	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	err = server.store.UnblockUser(ctx, db.UnblockUserParams{
+	err := server.store.UnblockUser(ctx, db.UnblockUserParams{
 		BlockerID: payload.UserID,
 		BlockedID: targetID,
 	})

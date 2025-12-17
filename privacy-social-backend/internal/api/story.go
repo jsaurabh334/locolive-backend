@@ -113,11 +113,8 @@ func (server *Server) createStory(ctx *gin.Context) {
 	}
 
 	// Invalidate feed cache for the area
-	userGeohash := geohash.Encode(req.Latitude, req.Longitude)
-	if len(userGeohash) > 5 {
-		userGeohash = userGeohash[:5]
-	}
-	server.redis.Del(ctx, "feed:"+userGeohash)
+	userGeohash := truncatedGeohash(req.Latitude, req.Longitude, 5)
+	server.invalidateFeedCache(userGeohash)
 
 	ctx.JSON(http.StatusCreated, toStoryResponseFromStory(story))
 }
@@ -150,34 +147,27 @@ func (server *Server) getFeed(ctx *gin.Context) {
 		return
 	}
 
-	// Cache miss - Dynamic Radius Discovery
+	// Cache miss - Fetch from DB
 	var stories []db.GetStoriesWithinRadiusRow
-	expansionSteps := []int{5000, 10000, 15000, 20000} // 5km -> 20km auto-expansion
-	var message string
+	var message string = "Nearby"
 
 	// Get auth payload for blocking/privacy rules
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	for _, radius := range expansionSteps {
-		stories, err = server.store.GetStoriesWithinRadius(ctx, db.GetStoriesWithinRadiusParams{
-			Lng:          req.Longitude,
-			Lat:          req.Latitude,
-			RadiusMeters: float64(radius),
-			UserID:       authPayload.UserID,
-		})
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, errorResponse(err))
-			return
-		}
-
-		if len(stories) > 0 {
-			// Found stories, stop expansion
-			message = "Nearby"
-			break
-		}
+	// Use fixed 50km radius to ensure users see others even if they have their own story nearby
+	// (Previous loop bug caused early exit if own story was found at <5km)
+	stories, err = server.store.GetStoriesWithinRadius(ctx, db.GetStoriesWithinRadiusParams{
+		Lng:          req.Longitude,
+		Lat:          req.Latitude,
+		RadiusMeters: 50000.0, // 50km
+		UserID:       authPayload.UserID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
 	}
 
-	// If still no stories after max radius (20km)
+	// If no stories found
 	if len(stories) == 0 {
 		message = "No users found nearby"
 	}
@@ -241,7 +231,7 @@ func (server *Server) deleteUserStory(ctx *gin.Context) {
 	if len(userGeohash) > 5 {
 		userGeohash = userGeohash[:5]
 	}
-	server.redis.Del(ctx, "feed:"+userGeohash)
+	server.invalidateFeedCache(userGeohash)
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "story deleted successfully"})
 }

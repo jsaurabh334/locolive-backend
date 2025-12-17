@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"privacy-social-backend/internal/repository/db"
 )
@@ -63,7 +63,10 @@ func (server *Server) banUser(ctx *gin.Context) {
 		return
 	}
 
-	userID, _ := uuid.Parse(req.UserID)
+	userID, ok := parseUUIDParam(ctx, req.UserID, "user_id")
+	if !ok {
+		return
+	}
 
 	user, err := server.store.BanUser(ctx, db.BanUserParams{
 		ID:             userID,
@@ -89,7 +92,10 @@ func (server *Server) deleteUser(ctx *gin.Context) {
 		return
 	}
 
-	userID, _ := uuid.Parse(req.UserID)
+	userID, ok := parseUUIDParam(ctx, req.UserID, "user_id")
+	if !ok {
+		return
+	}
 
 	err := server.store.DeleteUser(ctx, userID)
 	if err != nil {
@@ -128,13 +134,18 @@ func (server *Server) getStats(ctx *gin.Context) {
 	// Fetch Analytics (North Star)
 	retention, err := server.store.GetStreakRetentionStats(ctx)
 	if err != nil {
-		// Log but don't fail, maybe just return zeroes
+		log.Error().Err(err).Msg("failed to get retention stats")
+		retention = db.GetStreakRetentionStatsRow{} // Use zero value explicitly
 	}
 	engagement, err := server.store.GetEngagementStats(ctx)
 	if err != nil {
+		log.Error().Err(err).Msg("failed to get engagement stats")
+		engagement = db.GetEngagementStatsRow{}
 	}
 	conversion, err := server.store.GetConversionStats(ctx)
 	if err != nil {
+		log.Error().Err(err).Msg("failed to get conversion stats")
+		conversion = db.GetConversionStatsRow{}
 	}
 
 	response := gin.H{
@@ -195,7 +206,10 @@ func (server *Server) resolveReport(ctx *gin.Context) {
 		return
 	}
 
-	reportID, _ := uuid.Parse(req.ReportID)
+	reportID, ok := parseUUIDParam(ctx, req.ReportID, "report_id")
+	if !ok {
+		return
+	}
 
 	report, err := server.store.ResolveReport(ctx, reportID)
 	if err != nil {
@@ -218,7 +232,10 @@ func (server *Server) deleteStory(ctx *gin.Context) {
 		return
 	}
 
-	storyID, _ := uuid.Parse(req.StoryID)
+	storyID, ok := parseUUIDParam(ctx, req.StoryID, "story_id")
+	if !ok {
+		return
+	}
 
 	err := server.store.DeleteStory(ctx, storyID)
 	if err != nil {
@@ -227,7 +244,10 @@ func (server *Server) deleteStory(ctx *gin.Context) {
 	}
 
 	// Invalidate feed cache when story is deleted
-	server.redis.Del(ctx, "feed:*")
+	keys, err := server.redis.Keys(ctx, "feed:*").Result()
+	if err == nil && len(keys) > 0 {
+		server.redis.Del(ctx, keys...)
+	}
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "story deleted"})
 }

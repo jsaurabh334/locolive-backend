@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
@@ -55,11 +54,10 @@ func (server *Server) markNotificationRead(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
-	notificationID, err := uuid.Parse(req.NotificationID)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+	notificationID, ok := parseUUIDParam(ctx, req.NotificationID, "notification_id")
+	if !ok {
 		return
 	}
 

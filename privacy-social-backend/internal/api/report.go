@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"privacy-social-backend/internal/repository/db"
-	"privacy-social-backend/internal/token"
 )
 
 type createReportRequest struct {
@@ -25,17 +24,25 @@ func (server *Server) createReport(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
 	var targetUserID uuid.NullUUID
 	if req.TargetUserID != "" {
-		id, _ := uuid.Parse(req.TargetUserID)
+		id, err := uuid.Parse(req.TargetUserID)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target_user_id"})
+			return
+		}
 		targetUserID = uuid.NullUUID{UUID: id, Valid: true}
 	}
 
 	var targetStoryID uuid.NullUUID
 	if req.TargetStoryID != "" {
-		id, _ := uuid.Parse(req.TargetStoryID)
+		id, err := uuid.Parse(req.TargetStoryID)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target_story_id"})
+			return
+		}
 		targetStoryID = uuid.NullUUID{UUID: id, Valid: true}
 	}
 

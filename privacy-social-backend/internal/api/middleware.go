@@ -23,6 +23,14 @@ func authMiddleware(tokenMaker token.Maker) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		authorizationHeader := ctx.GetHeader(authorizationHeaderKey)
 
+		// Check for query parameter (for WebSockets)
+		if len(authorizationHeader) == 0 {
+			tokenParam := ctx.Query("token")
+			if len(tokenParam) > 0 {
+				authorizationHeader = "Bearer " + tokenParam
+			}
+		}
+
 		if len(authorizationHeader) == 0 {
 			err := errors.New("authorization header is not provided")
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse(err))

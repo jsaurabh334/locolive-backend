@@ -18,26 +18,19 @@ export const LocationProvider = ({ children }) => {
         onError: (err) => console.error("Location ping failed", err),
     });
 
+    const lastPingRef = useRef(0);
+
     // Automatically ping backend when location changes and user is authenticated
     useEffect(() => {
-        if (isAuthenticated && location) {
-            // Logic to limit ping frequency could go here (e.g., only moving > 50m or every 5 mins)
-            // For now, we rely on the component using this or just ping on significant changes
-            // Let's implement a simple throttle or just ping on every update (watchPosition might be frequent)
-
-            const lastPing = window.lastPingTime || 0;
+        if (isAuthenticated && location?.lat && location?.lng) {
             const now = Date.now();
-
-            // Ping at most every 60 seconds unless moved significantly?
-            // For MVP, let's keep it simple: Real-time is key for this app.
-            // But we shouldn't spam the API. 'watchPosition' can fire very often.
-
-            if (now - lastPing > 30000) { // 30 seconds throttle
+            // Throttle pings to every 60 seconds
+            if (now - lastPingRef.current > 60000) {
                 pingMutation.mutate(location);
-                window.lastPingTime = now;
+                lastPingRef.current = now;
             }
         }
-    }, [location, isAuthenticated]);
+    }, [location?.lat, location?.lng, isAuthenticated]);
 
     return (
         <LocationContext.Provider value={{ location, error, permissionStatus }}>

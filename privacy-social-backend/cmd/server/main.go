@@ -35,10 +35,10 @@ func main() {
 	defer conn.Close()
 
 	// Optimize connection pool for better performance
-	conn.SetMaxOpenConns(100)                  // Maximum open connections
-	conn.SetMaxIdleConns(25)                   // Maximum idle connections
-	conn.SetConnMaxLifetime(5 * time.Minute)   // Connection lifetime
-	conn.SetConnMaxIdleTime(2 * time.Minute)   // Idle connection timeout
+	conn.SetMaxOpenConns(100)                // Maximum open connections
+	conn.SetMaxIdleConns(25)                 // Maximum idle connections
+	conn.SetConnMaxLifetime(5 * time.Minute) // Connection lifetime
+	conn.SetConnMaxIdleTime(2 * time.Minute) // Idle connection timeout
 
 	// Test connection
 	if err := conn.Ping(); err != nil {
@@ -47,12 +47,12 @@ func main() {
 	log.Info().Msg("Database connection pool configured successfully")
 
 	store := repository.NewStore(conn)
-    
-    // Start background workers
-    cleanupWorker := worker.NewCleanupWorker(store)
-    cleanupWorker.Start()
-    cleanupWorker.StartCrossingDetector()
-    
+
+	// Start background workers
+	cleanupWorker := worker.NewCleanupWorker(store)
+	cleanupWorker.Start()
+	cleanupWorker.StartCrossingDetector()
+
 	server, err := api.NewServer(config, store)
 	if err != nil {
 		log.Fatal().Err(err).Msg("cannot create server")
@@ -82,4 +82,3 @@ func main() {
 	<-shutdownCtx.Done()
 	log.Info().Msg("Server stopped")
 }
-

@@ -44,7 +44,6 @@ func (server *Server) getStoriesMap(ctx *gin.Context) {
 		return
 	}
 
-	// Create cache key from bounding box (rounded to 2 decimals for better cache hits)
 	// Create cache key from bounding box (rounded to 2 decimals for better cache hits) + UserID for personalization
 	cacheKey := fmt.Sprintf("map:%.2f:%.2f:%.2f:%.2f:%s", req.North, req.South, req.East, req.West, authPayload.UserID)
 

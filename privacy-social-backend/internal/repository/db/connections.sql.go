@@ -96,6 +96,82 @@ func (q *Queries) GetConnection(ctx context.Context, arg GetConnectionParams) (C
 	return i, err
 }
 
+const getSuggestedConnections = `-- name: GetSuggestedConnections :many
+WITH my_connections AS (
+    SELECT c1.target_id as friend_id FROM connections c1 WHERE c1.requester_id = $1 AND c1.status = 'accepted'
+    UNION
+    SELECT c2.requester_id as friend_id FROM connections c2 WHERE c2.target_id = $1 AND c2.status = 'accepted'
+),
+excluded_users AS (
+    SELECT c3.target_id as id FROM connections c3 WHERE c3.requester_id = $1
+    UNION
+    SELECT c4.requester_id as id FROM connections c4 WHERE c4.target_id = $1
+    UNION
+    SELECT $1::uuid as id
+)
+SELECT 
+    u.id, 
+    u.username, 
+    u.full_name, 
+    u.avatar_url,
+    COALESCE((
+        SELECT COUNT(*)
+        FROM connections c
+        WHERE 
+            c.status = 'accepted' AND (
+                (c.requester_id = u.id AND c.target_id IN (SELECT friend_id FROM my_connections)) OR
+                (c.target_id = u.id AND c.requester_id IN (SELECT friend_id FROM my_connections))
+            )
+    ), 0)::bigint as mutual_count
+FROM users u
+WHERE u.id NOT IN (SELECT id FROM excluded_users)
+AND u.is_shadow_banned = false
+ORDER BY mutual_count DESC, u.created_at DESC
+LIMIT $2
+`
+
+type GetSuggestedConnectionsParams struct {
+	RequesterID uuid.UUID `json:"requester_id"`
+	Limit       int32     `json:"limit"`
+}
+
+type GetSuggestedConnectionsRow struct {
+	ID          uuid.UUID      `json:"id"`
+	Username    string         `json:"username"`
+	FullName    string         `json:"full_name"`
+	AvatarUrl   sql.NullString `json:"avatar_url"`
+	MutualCount int64          `json:"mutual_count"`
+}
+
+func (q *Queries) GetSuggestedConnections(ctx context.Context, arg GetSuggestedConnectionsParams) ([]GetSuggestedConnectionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getSuggestedConnections, arg.RequesterID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSuggestedConnectionsRow
+	for rows.Next() {
+		var i GetSuggestedConnectionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.FullName,
+			&i.AvatarUrl,
+			&i.MutualCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConnections = `-- name: ListConnections :many
 SELECT 
     u.id, 

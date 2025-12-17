@@ -52,9 +52,12 @@ const StoryMap = () => {
 
     useEffect(() => {
         if (location?.latitude && location?.longitude) {
-            setMapCenter([location.latitude, location.longitude]);
+            setMapCenter(prev => {
+                if (prev[0] === location.latitude && prev[1] === location.longitude) return prev;
+                return [location.latitude, location.longitude];
+            });
         }
-    }, [location]);
+    }, [location?.latitude, location?.longitude]);
 
     // Load initial bounds
     useEffect(() => {

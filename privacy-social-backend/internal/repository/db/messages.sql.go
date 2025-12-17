@@ -17,20 +17,27 @@ const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (
   sender_id,
   receiver_id,
-  content
+  content,
+  expires_at
 ) VALUES (
-  $1, $2, $3
-) RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at
+  $1, $2, $3, $4
+) RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at
 `
 
 type CreateMessageParams struct {
-	SenderID   uuid.UUID `json:"sender_id"`
-	ReceiverID uuid.UUID `json:"receiver_id"`
-	Content    string    `json:"content"`
+	SenderID   uuid.UUID    `json:"sender_id"`
+	ReceiverID uuid.UUID    `json:"receiver_id"`
+	Content    string       `json:"content"`
+	ExpiresAt  sql.NullTime `json:"expires_at"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
-	row := q.db.QueryRowContext(ctx, createMessage, arg.SenderID, arg.ReceiverID, arg.Content)
+	row := q.db.QueryRowContext(ctx, createMessage,
+		arg.SenderID,
+		arg.ReceiverID,
+		arg.Content,
+		arg.ExpiresAt,
+	)
 	var i Message
 	err := row.Scan(
 		&i.ID,
@@ -40,6 +47,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.IsRead,
 		&i.CreatedAt,
 		&i.ReadAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -68,6 +76,32 @@ func (q *Queries) CreateMessageReaction(ctx context.Context, arg CreateMessageRe
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const deleteConversation = `-- name: DeleteConversation :exec
+DELETE FROM messages
+WHERE (sender_id = $1 AND receiver_id = $2)
+   OR (sender_id = $2 AND receiver_id = $1)
+`
+
+type DeleteConversationParams struct {
+	SenderID   uuid.UUID `json:"sender_id"`
+	ReceiverID uuid.UUID `json:"receiver_id"`
+}
+
+func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversationParams) error {
+	_, err := q.db.ExecContext(ctx, deleteConversation, arg.SenderID, arg.ReceiverID)
+	return err
+}
+
+const deleteExpiredMessages = `-- name: DeleteExpiredMessages :exec
+DELETE FROM messages
+WHERE expires_at IS NOT NULL AND expires_at < NOW()
+`
+
+func (q *Queries) DeleteExpiredMessages(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredMessages)
+	return err
 }
 
 const deleteMessage = `-- name: DeleteMessage :exec
@@ -112,8 +146,109 @@ func (q *Queries) DeleteOldMessages(ctx context.Context) error {
 	return err
 }
 
+const getConversationList = `-- name: GetConversationList :many
+WITH conversation_partners AS (
+  SELECT DISTINCT
+    CASE 
+      WHEN sender_id = $1 THEN receiver_id
+      ELSE sender_id
+    END as partner_id
+  FROM messages
+  WHERE sender_id = $1 OR receiver_id = $1
+),
+latest_messages AS (
+  SELECT DISTINCT ON (
+    CASE 
+      WHEN m.sender_id = $1 THEN m.receiver_id
+      ELSE m.sender_id
+    END
+  )
+    CASE 
+      WHEN m.sender_id = $1 THEN m.receiver_id
+      ELSE m.sender_id
+    END as partner_id,
+    m.id as message_id,
+    m.content as last_message,
+    m.created_at as last_message_at,
+    m.sender_id as last_sender_id
+  FROM messages m
+  WHERE (m.sender_id = $1 OR m.receiver_id = $1)
+    AND (m.expires_at IS NULL OR m.expires_at > NOW())
+  ORDER BY 
+    CASE 
+      WHEN m.sender_id = $1 THEN m.receiver_id
+      ELSE m.sender_id
+    END,
+    m.created_at DESC
+)
+SELECT 
+  u.id,
+  u.username,
+  u.full_name,
+  u.avatar_url,
+  lm.last_message,
+  lm.last_message_at,
+  lm.last_sender_id,
+  COALESCE(
+    (SELECT COUNT(*) 
+     FROM messages m2
+     WHERE m2.sender_id = u.id 
+       AND m2.receiver_id = $1 
+       AND m2.read_at IS NULL
+       AND (m2.expires_at IS NULL OR m2.expires_at > NOW())
+    ), 0
+  ) as unread_count
+FROM conversation_partners cp
+JOIN users u ON u.id = cp.partner_id
+JOIN latest_messages lm ON lm.partner_id = cp.partner_id
+ORDER BY lm.last_message_at DESC
+`
+
+type GetConversationListRow struct {
+	ID            uuid.UUID      `json:"id"`
+	Username      string         `json:"username"`
+	FullName      string         `json:"full_name"`
+	AvatarUrl     sql.NullString `json:"avatar_url"`
+	LastMessage   string         `json:"last_message"`
+	LastMessageAt time.Time      `json:"last_message_at"`
+	LastSenderID  uuid.UUID      `json:"last_sender_id"`
+	UnreadCount   interface{}    `json:"unread_count"`
+}
+
+func (q *Queries) GetConversationList(ctx context.Context, receiverID uuid.UUID) ([]GetConversationListRow, error) {
+	rows, err := q.db.QueryContext(ctx, getConversationList, receiverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetConversationListRow
+	for rows.Next() {
+		var i GetConversationListRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.FullName,
+			&i.AvatarUrl,
+			&i.LastMessage,
+			&i.LastMessageAt,
+			&i.LastSenderID,
+			&i.UnreadCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMessage = `-- name: GetMessage :one
-SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at FROM messages WHERE id = $1
+SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at FROM messages WHERE id = $1
 `
 
 func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error) {
@@ -127,6 +262,7 @@ func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error)
 		&i.IsRead,
 		&i.CreatedAt,
 		&i.ReadAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -136,6 +272,7 @@ SELECT mr.id, mr.message_id, mr.user_id, mr.emoji, mr.created_at, u.username, u.
 FROM message_reactions mr
 JOIN users u ON mr.user_id = u.id
 WHERE mr.message_id = $1
+
 ORDER BY mr.created_at ASC
 `
 
@@ -180,11 +317,39 @@ func (q *Queries) GetMessageReactions(ctx context.Context, messageID uuid.UUID) 
 	return items, nil
 }
 
+const getUnreadMessageCount = `-- name: GetUnreadMessageCount :one
+SELECT COUNT(*) FROM messages
+WHERE receiver_id = $1 AND read_at IS NULL
+`
+
+func (q *Queries) GetUnreadMessageCount(ctx context.Context, receiverID uuid.UUID) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getUnreadMessageCount, receiverID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const listMessages = `-- name: ListMessages :many
-SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at FROM messages
-WHERE (sender_id = $1 AND receiver_id = $2)
-   OR (sender_id = $2 AND receiver_id = $1)
-ORDER BY created_at ASC
+SELECT m.id, m.sender_id, m.receiver_id, m.content, m.is_read, m.created_at, m.read_at, m.expires_at,
+       COALESCE(
+           (SELECT json_agg(json_build_object(
+               'id', mr.id,
+               'emoji', mr.emoji,
+               'user_id', mr.user_id,
+               'username', u.username,
+               'avatar_url', u.avatar_url,
+               'created_at', mr.created_at
+           ) ORDER BY mr.created_at ASC)
+            FROM message_reactions mr
+            JOIN users u ON mr.user_id = u.id
+            WHERE mr.message_id = m.id),
+           '[]'::json
+       ) as reactions
+FROM messages m
+WHERE ((m.sender_id = $1 AND m.receiver_id = $2)
+   OR (m.sender_id = $2 AND m.receiver_id = $1))
+   AND (m.expires_at IS NULL OR m.expires_at > NOW())
+ORDER BY m.created_at ASC
 `
 
 type ListMessagesParams struct {
@@ -192,15 +357,27 @@ type ListMessagesParams struct {
 	ReceiverID uuid.UUID `json:"receiver_id"`
 }
 
-func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]Message, error) {
+type ListMessagesRow struct {
+	ID         uuid.UUID    `json:"id"`
+	SenderID   uuid.UUID    `json:"sender_id"`
+	ReceiverID uuid.UUID    `json:"receiver_id"`
+	Content    string       `json:"content"`
+	IsRead     bool         `json:"is_read"`
+	CreatedAt  time.Time    `json:"created_at"`
+	ReadAt     sql.NullTime `json:"read_at"`
+	ExpiresAt  sql.NullTime `json:"expires_at"`
+	Reactions  interface{}  `json:"reactions"`
+}
+
+func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMessages, arg.SenderID, arg.ReceiverID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Message
+	var items []ListMessagesRow
 	for rows.Next() {
-		var i Message
+		var i ListMessagesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SenderID,
@@ -209,6 +386,8 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]M
 			&i.IsRead,
 			&i.CreatedAt,
 			&i.ReadAt,
+			&i.ExpiresAt,
+			&i.Reactions,
 		); err != nil {
 			return nil, err
 		}
@@ -243,7 +422,7 @@ const markMessageRead = `-- name: MarkMessageRead :one
 UPDATE messages
 SET read_at = NOW()
 WHERE id = $1 AND receiver_id = $2 AND read_at IS NULL
-RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at
 `
 
 type MarkMessageReadParams struct {
@@ -262,6 +441,7 @@ func (q *Queries) MarkMessageRead(ctx context.Context, arg MarkMessageReadParams
 		&i.IsRead,
 		&i.CreatedAt,
 		&i.ReadAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -270,7 +450,7 @@ const updateMessage = `-- name: UpdateMessage :one
 UPDATE messages
 SET content = $3
 WHERE id = $1 AND sender_id = $2
-RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at
 `
 
 type UpdateMessageParams struct {
@@ -290,6 +470,7 @@ func (q *Queries) UpdateMessage(ctx context.Context, arg UpdateMessageParams) (M
 		&i.IsRead,
 		&i.CreatedAt,
 		&i.ReadAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }

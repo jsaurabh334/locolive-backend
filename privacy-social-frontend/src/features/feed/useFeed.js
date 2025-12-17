@@ -11,7 +11,7 @@ export const useFeed = () => {
             const response = await apiService.getFeed(1, location.lat, location.lng);
             return response.data?.stories || [];
         },
-        enabled: !!location,
+        enabled: !!(location?.lat && location?.lng),
         staleTime: 1000 * 60 * 1,
     });
 };
@@ -38,7 +38,7 @@ export const useStoriesMap = (bounds) => {
             const response = await apiService.getStoriesMap(north, south, east, west);
             return response.data?.clusters || [];
         },
-        enabled: !!location,
+        enabled: !!bounds || !!(location?.lat && location?.lng),
         staleTime: 1000 * 60 * 2,
     });
 };

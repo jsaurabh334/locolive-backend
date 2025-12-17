@@ -2,12 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog/log"
 )
 
 // Client represents a connected user
@@ -49,7 +49,7 @@ func (h *Hub) Run() {
 			}
 			h.clients[client.UserID][client] = true
 			h.mutex.Unlock()
-			log.Printf("Client registered: %s", client.Username)
+			log.Info().Str("username", client.Username).Msg("Client registered")
 
 		case client := <-h.Unregister:
 			h.mutex.Lock()
@@ -63,7 +63,7 @@ func (h *Hub) Run() {
 				}
 			}
 			h.mutex.Unlock()
-			log.Printf("Client unregistered: %s", client.Username)
+			log.Info().Str("username", client.Username).Msg("Client unregistered")
 		}
 	}
 }
@@ -152,7 +152,7 @@ func (c *Client) ReadPump() {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Error().Err(err).Msg("WebSocket unexpected close error")
 			}
 			break
 		}

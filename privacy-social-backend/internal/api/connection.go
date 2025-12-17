@@ -137,8 +137,11 @@ func (server *Server) updateConnection(ctx *gin.Context) {
 		return
 	}
 
-	requesterID, _ := uuid.Parse(req.RequesterID)
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	requesterID, ok := parseUUIDParam(ctx, req.RequesterID, "requester_id")
+	if !ok {
+		return
+	}
+	authPayload := getAuthPayload(ctx)
 
 	conn, err := server.store.UpdateConnectionStatus(ctx, db.UpdateConnectionStatusParams{
 		RequesterID: requesterID,
@@ -190,4 +193,38 @@ func (server *Server) deleteConnection(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "connection deleted"})
+}
+
+type suggestedConnectionResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Username    string    `json:"username"`
+	FullName    string    `json:"full_name"`
+	AvatarUrl   string    `json:"avatar_url"`
+	MutualCount int64     `json:"mutual_count"`
+}
+
+func (server *Server) getSuggestedConnections(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	suggestions, err := server.store.GetSuggestedConnections(ctx, db.GetSuggestedConnectionsParams{
+		RequesterID: authPayload.UserID,
+		Limit:       10,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	rsp := make([]suggestedConnectionResponse, len(suggestions))
+	for i, s := range suggestions {
+		rsp[i] = suggestedConnectionResponse{
+			ID:          s.ID,
+			Username:    s.Username,
+			FullName:    s.FullName,
+			AvatarUrl:   s.AvatarUrl.String,
+			MutualCount: s.MutualCount,
+		}
+	}
+
+	ctx.JSON(http.StatusOK, rsp)
 }

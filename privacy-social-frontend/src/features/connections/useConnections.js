@@ -23,6 +23,16 @@ export const usePendingRequests = () => {
     });
 };
 
+export const useSuggestedConnections = () => {
+    return useQuery({
+        queryKey: ['connections', 'suggested'],
+        queryFn: async () => {
+            const response = await apiService.getSuggestedConnections();
+            return Array.isArray(response.data) ? response.data : [];
+        }
+    });
+};
+
 export const useSendRequest = () => {
     const queryClient = useQueryClient();
     return useMutation({

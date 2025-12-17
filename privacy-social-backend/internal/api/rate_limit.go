@@ -12,10 +12,10 @@ import (
 
 // Rate limit configurations
 var (
-	// General API rate limit: 100 requests per minute
+	// General API rate limit: 500 requests per minute (increased from 100)
 	generalRate = limiter.Rate{
 		Period: 1 * time.Minute,
-		Limit:  100,
+		Limit:  500,
 	}
 
 	// Auth endpoints: 60 requests per 1 minute
@@ -30,16 +30,16 @@ var (
 		Limit:  50,
 	}
 
-	// Location updates: 60 per hour
+	// Location updates: 600 per hour (10 per minute, increased from 300)
 	locationRate = limiter.Rate{
 		Period: 1 * time.Hour,
-		Limit:  60,
+		Limit:  600,
 	}
 
-	// Messages: 100 per minute
+	// Messages: 200 per minute
 	messageRate = limiter.Rate{
 		Period: 1 * time.Minute,
-		Limit:  100,
+		Limit:  200,
 	}
 )
 

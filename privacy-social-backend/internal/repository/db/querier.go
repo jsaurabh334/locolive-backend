@@ -39,7 +39,9 @@ type Querier interface {
 	// Used for panic mode - deletes all user data
 	DeleteAllUserData(ctx context.Context, id uuid.UUID) error
 	DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error
+	DeleteConversation(ctx context.Context, arg DeleteConversationParams) error
 	DeleteExpiredLocations(ctx context.Context) error
+	DeleteExpiredMessages(ctx context.Context) error
 	DeleteExpiredStories(ctx context.Context) error
 	DeleteMessage(ctx context.Context, arg DeleteMessageParams) error
 	DeleteMessageReaction(ctx context.Context, arg DeleteMessageReactionParams) error
@@ -57,6 +59,7 @@ type Querier interface {
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
 	// Get stories from connected users (not limited by radius)
 	GetConnectionStories(ctx context.Context, userID uuid.UUID) ([]GetConnectionStoriesRow, error)
+	GetConversationList(ctx context.Context, receiverID uuid.UUID) ([]GetConversationListRow, error)
 	GetConversionStats(ctx context.Context) (GetConversionStatsRow, error)
 	GetCrossingsForUser(ctx context.Context, userID1 uuid.UUID) ([]Crossing, error)
 	GetEngagementStats(ctx context.Context) (GetEngagementStatsRow, error)
@@ -65,6 +68,7 @@ type Querier interface {
 	GetPrivacySettings(ctx context.Context, userID uuid.UUID) (PrivacySetting, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	// Get stories within a bounding box for map view
+	// AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
 	GetStoriesInBounds(ctx context.Context, arg GetStoriesInBoundsParams) ([]GetStoriesInBoundsRow, error)
 	GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]GetStoriesWithinRadiusRow, error)
 	GetStoryByID(ctx context.Context, id uuid.UUID) (Story, error)
@@ -75,7 +79,9 @@ type Querier interface {
 	// Only accessible by story owner
 	GetStoryViewers(ctx context.Context, storyID uuid.UUID) ([]GetStoryViewersRow, error)
 	GetStreakRetentionStats(ctx context.Context) (GetStreakRetentionStatsRow, error)
+	GetSuggestedConnections(ctx context.Context, arg GetSuggestedConnectionsParams) ([]GetSuggestedConnectionsRow, error)
 	GetSystemStats(ctx context.Context) (GetSystemStatsRow, error)
+	GetUnreadMessageCount(ctx context.Context, receiverID uuid.UUID) (int64, error)
 	// Get user's activity status and visibility
 	GetUserActivityStatus(ctx context.Context, id uuid.UUID) (GetUserActivityStatusRow, error)
 	GetUserByEmail(ctx context.Context, email sql.NullString) (User, error)
@@ -89,7 +95,7 @@ type Querier interface {
 	// Admin: List all stories
 	ListAllStories(ctx context.Context, arg ListAllStoriesParams) ([]ListAllStoriesRow, error)
 	ListConnections(ctx context.Context, requesterID uuid.UUID) ([]ListConnectionsRow, error)
-	ListMessages(ctx context.Context, arg ListMessagesParams) ([]Message, error)
+	ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error)
 	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]Notification, error)
 	ListPendingRequests(ctx context.Context, targetID uuid.UUID) ([]ListPendingRequestsRow, error)
 	// Admin: List all reports

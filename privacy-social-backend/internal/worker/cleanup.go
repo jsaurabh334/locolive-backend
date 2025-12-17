@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"privacy-social-backend/internal/repository"
+
+	"github.com/rs/zerolog/log"
 )
 
 type CleanupWorker struct {
@@ -37,22 +38,38 @@ func (worker *CleanupWorker) cleanup() {
 	if err != nil {
 		log.Error().Err(err).Msg("failed to delete expired locations")
 	} else {
-	    log.Info().Msg("Expired locations deleted")
-    }
-    
-    // Cleanup expired stories
-    err = worker.store.DeleteExpiredStories(ctx)
-    if err != nil {
-        log.Error().Err(err).Msg("failed to delete expired stories")
-    } else {
-        log.Info().Msg("Expired stories deleted")
-    }
-    
-    // Cleanup old messages (30+ days)
-    err = worker.store.DeleteOldMessages(ctx)
-    if err != nil {
-        log.Error().Err(err).Msg("failed to delete old messages")
-    } else {
-        log.Info().Msg("Old messages deleted")
-    }
+		log.Info().Msg("Expired locations deleted")
+	}
+
+	// Cleanup expired stories
+	err = worker.store.DeleteExpiredStories(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to delete expired stories")
+	} else {
+		log.Info().Msg("Expired stories deleted")
+	}
+
+	// Cleanup old messages (30+ days)
+	err = worker.store.DeleteOldMessages(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to delete old messages")
+	} else {
+		log.Info().Msg("Old messages deleted")
+	}
+
+	// Cleanup expired messages (Secret Mode disappearing messages)
+	err = worker.store.DeleteExpiredMessages(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to delete expired messages")
+	} else {
+		log.Info().Msg("Expired messages deleted")
+	}
+
+	// Cleanup old notifications (30+ days)
+	err = worker.store.DeleteOldNotifications(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to delete old notifications")
+	} else {
+		log.Info().Msg("Old notifications deleted")
+	}
 }

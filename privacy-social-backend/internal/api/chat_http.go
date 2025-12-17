@@ -4,54 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"log"
 	"net/http"
 	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all for dev
-	},
-}
-
 const chatCacheTTL = 10 * time.Minute
-
-// chatWebSocket handles WebSocket connections for real-time chat
-func (server *Server) chatWebSocket(ctx *gin.Context) {
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
-
-	// Upgrade HTTP to WS
-	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
-	if err != nil {
-		log.Printf("Failed to set websocket upgrade: %v", err)
-		return
-	}
-
-	client := &Client{
-		Hub:      server.hub,
-		UserID:   authPayload.UserID,
-		Conn:     conn,
-		Send:     make(chan []byte, 256),
-		Username: authPayload.Username,
-	}
-
-	server.hub.Register <- client
-
-	// Start pumps in goroutines
-	go client.WritePump()
-	go client.ReadPump()
-}
 
 // checkConnection verifies that two users have an accepted connection AND no blocks exist
 func (server *Server) checkConnection(ctx context.Context, userID1, userID2 uuid.UUID) error {
@@ -126,12 +90,11 @@ func (server *Server) checkConnection(ctx context.Context, userID1, userID2 uuid
 // API to get chat history
 func (server *Server) getChatHistory(ctx *gin.Context) {
 	targetIDStr := ctx.Query("user_id")
-	targetID, err := uuid.Parse(targetIDStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
+	targetID, ok := parseUUIDParam(ctx, targetIDStr, "user_id")
+	if !ok {
 		return
 	}
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
 	// Check for mutual connection
 	if err := server.checkConnection(ctx, authPayload.UserID, targetID); err != nil {
@@ -165,18 +128,61 @@ func (server *Server) getChatHistory(ctx *gin.Context) {
 		return
 	}
 
+	// Map to response struct to ensure Reactions are valid JSON, not Base64
+	type MessageResponse struct {
+		ID         uuid.UUID       `json:"id"`
+		SenderID   uuid.UUID       `json:"sender_id"`
+		ReceiverID uuid.UUID       `json:"receiver_id"`
+		Content    string          `json:"content"`
+		IsRead     bool            `json:"is_read"`
+		CreatedAt  time.Time       `json:"created_at"`
+		ReadAt     sql.NullTime    `json:"read_at"`
+		ExpiresAt  sql.NullTime    `json:"expires_at"`
+		Reactions  json.RawMessage `json:"reactions"`
+	}
+
+	responseMsgs := make([]MessageResponse, len(msgs))
+	for i, m := range msgs {
+		var reactionsJSON json.RawMessage
+		if m.Reactions != nil {
+			switch v := m.Reactions.(type) {
+			case []byte:
+				reactionsJSON = json.RawMessage(v)
+			case string:
+				reactionsJSON = json.RawMessage(v)
+			default:
+				reactionsJSON = []byte("[]")
+			}
+		} else {
+			reactionsJSON = []byte("[]")
+		}
+
+		responseMsgs[i] = MessageResponse{
+			ID:         m.ID,
+			SenderID:   m.SenderID,
+			ReceiverID: m.ReceiverID,
+			Content:    m.Content,
+			IsRead:     m.IsRead,
+			CreatedAt:  m.CreatedAt,
+			ReadAt:     m.ReadAt,
+			ExpiresAt:  m.ExpiresAt,
+			Reactions:  reactionsJSON,
+		}
+	}
+
 	// Cache the result
-	responseJSON, _ := json.Marshal(msgs)
+	responseJSON, _ := json.Marshal(responseMsgs)
 	server.redis.Set(context.Background(), cacheKey, responseJSON, chatCacheTTL)
 
 	ctx.Header("X-Cache", "MISS")
-	ctx.JSON(http.StatusOK, msgs)
+	ctx.Data(http.StatusOK, "application/json", responseJSON)
 }
 
 // REST API helper to send a message
 type sendMessageRequest struct {
-	ReceiverID uuid.UUID `json:"receiver_id" binding:"required"`
-	Content    string    `json:"content" binding:"required"`
+	ReceiverID       uuid.UUID `json:"receiver_id" binding:"required"`
+	Content          string    `json:"content" binding:"required"`
+	ExpiresInSeconds int64     `json:"expires_in_seconds"` // Optional
 }
 
 func (server *Server) sendMessage(ctx *gin.Context) {
@@ -186,7 +192,7 @@ func (server *Server) sendMessage(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
 	// Check for mutual connection before sending
 	if err := server.checkConnection(ctx, authPayload.UserID, req.ReceiverID); err != nil {
@@ -198,10 +204,20 @@ func (server *Server) sendMessage(ctx *gin.Context) {
 		return
 	}
 
+	// Handle expiry
+	var expiresAt sql.NullTime
+	if req.ExpiresInSeconds > 0 {
+		expiresAt = sql.NullTime{
+			Time:  time.Now().UTC().Add(time.Duration(req.ExpiresInSeconds) * time.Second),
+			Valid: true,
+		}
+	}
+
 	msg, err := server.store.CreateMessage(ctx, db.CreateMessageParams{
 		SenderID:   authPayload.UserID,
 		ReceiverID: req.ReceiverID,
 		Content:    req.Content,
+		ExpiresAt:  expiresAt,
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -209,10 +225,10 @@ func (server *Server) sendMessage(ctx *gin.Context) {
 	}
 
 	// Invalidate cache for this conversation
-	ids := []string{authPayload.UserID.String(), req.ReceiverID.String()}
-	sort.Strings(ids)
-	cacheKey := "messages:" + ids[0] + ":" + ids[1]
-	server.redis.Del(context.Background(), cacheKey)
+	server.invalidateConversationCache(authPayload.UserID, req.ReceiverID)
+
+	// Update Unread Count Cache for Receiver
+	server.incrementUnreadCount(req.ReceiverID)
 
 	// Send real-time notification to receiver via WebSocket
 	wsMsg := WSMessage{
@@ -224,19 +240,21 @@ func (server *Server) sendMessage(ctx *gin.Context) {
 	wsMsgBytes, _ := json.Marshal(wsMsg)
 	server.hub.SendToUser(req.ReceiverID, wsMsgBytes)
 
+	// Also send to SENDER so their client can update the messages list
+	server.hub.SendToUser(authPayload.UserID, wsMsgBytes)
+
 	ctx.JSON(http.StatusCreated, msg)
 }
 
 // deleteMessage allows a user to unsend/delete their own message
 func (server *Server) deleteMessage(ctx *gin.Context) {
 	messageIDStr := ctx.Param("id")
-	messageID, err := uuid.Parse(messageIDStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid message ID"})
+	messageID, ok := parseUUIDParam(ctx, messageIDStr, "message_id")
+	if !ok {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
 	// Get the message first to find the receiver for cache invalidation
 	msg, err := server.store.GetMessage(ctx, messageID)
@@ -266,18 +284,10 @@ func (server *Server) deleteMessage(ctx *gin.Context) {
 	}
 
 	// Invalidate cache
-	ids := []string{msg.SenderID.String(), msg.ReceiverID.String()}
-	sort.Strings(ids)
-	cacheKey := "messages:" + ids[0] + ":" + ids[1]
-	server.redis.Del(context.Background(), cacheKey)
+	server.invalidateConversationCache(msg.SenderID, msg.ReceiverID)
 
 	// Notify receiver via WebSocket
-	wsMsg := WSMessage{
-		Type:    "message_deleted",
-		Payload: gin.H{"message_id": messageID},
-	}
-	wsMsgBytes, _ := json.Marshal(wsMsg)
-	server.hub.SendToUser(msg.ReceiverID, wsMsgBytes)
+	server.sendWSNotification(msg.ReceiverID, "message_deleted", gin.H{"message_id": messageID})
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "Message deleted"})
 }
@@ -290,9 +300,8 @@ type editMessageRequest struct {
 // editMessage allows a user to edit their own message
 func (server *Server) editMessage(ctx *gin.Context) {
 	messageIDStr := ctx.Param("id")
-	messageID, err := uuid.Parse(messageIDStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid message ID"})
+	messageID, ok := parseUUIDParam(ctx, messageIDStr, "message_id")
+	if !ok {
 		return
 	}
 
@@ -302,7 +311,7 @@ func (server *Server) editMessage(ctx *gin.Context) {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
 	// Get the message first to find the receiver for cache invalidation
 	originalMsg, err := server.store.GetMessage(ctx, messageID)
@@ -333,18 +342,10 @@ func (server *Server) editMessage(ctx *gin.Context) {
 	}
 
 	// Invalidate cache
-	ids := []string{originalMsg.SenderID.String(), originalMsg.ReceiverID.String()}
-	sort.Strings(ids)
-	cacheKey := "messages:" + ids[0] + ":" + ids[1]
-	server.redis.Del(context.Background(), cacheKey)
+	server.invalidateConversationCache(originalMsg.SenderID, originalMsg.ReceiverID)
 
 	// Notify receiver via WebSocket
-	wsMsg := WSMessage{
-		Type:    "message_edited",
-		Payload: updatedMsg,
-	}
-	wsMsgBytes, _ := json.Marshal(wsMsg)
-	server.hub.SendToUser(originalMsg.ReceiverID, wsMsgBytes)
+	server.sendWSNotification(originalMsg.ReceiverID, "message_edited", updatedMsg)
 
 	ctx.JSON(http.StatusOK, updatedMsg)
 }
@@ -352,15 +353,14 @@ func (server *Server) editMessage(ctx *gin.Context) {
 // markConversationRead marks all messages from a user as read
 func (server *Server) markConversationRead(ctx *gin.Context) {
 	senderIDStr := ctx.Param("userId")
-	senderID, err := uuid.Parse(senderIDStr)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+	senderID, ok := parseUUIDParam(ctx, senderIDStr, "user_id")
+	if !ok {
 		return
 	}
 
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	authPayload := getAuthPayload(ctx)
 
-	err = server.store.MarkConversationRead(ctx, db.MarkConversationReadParams{
+	err := server.store.MarkConversationRead(ctx, db.MarkConversationReadParams{
 		ReceiverID: authPayload.UserID,
 		SenderID:   senderID,
 	})
@@ -370,10 +370,10 @@ func (server *Server) markConversationRead(ctx *gin.Context) {
 	}
 
 	// Invalidate cache
-	ids := []string{authPayload.UserID.String(), senderID.String()}
-	sort.Strings(ids)
-	cacheKey := "messages:" + ids[0] + ":" + ids[1]
-	server.redis.Del(context.Background(), cacheKey)
+	server.invalidateConversationCache(authPayload.UserID, senderID)
+
+	// Clear Unread Count Cache for Reader (User)
+	server.invalidateUnreadCountCache(authPayload.UserID)
 
 	// Notify sender that their messages were read
 	wsMsg := WSMessage{
@@ -385,6 +385,9 @@ func (server *Server) markConversationRead(ctx *gin.Context) {
 	}
 	wsMsgBytes, _ := json.Marshal(wsMsg)
 	server.hub.SendToUser(senderID, wsMsgBytes)
+
+	// Notify Self (Reader) to update badges on other devices
+	server.hub.SendToUser(authPayload.UserID, wsMsgBytes)
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "Conversation marked as read"})
 }
@@ -532,4 +535,100 @@ func (server *Server) getMessageReactions(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, reactions)
+}
+
+// getUnreadMessageCount returns the total number of unread messages for the user
+func (server *Server) getUnreadMessageCount(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	// Try Redis first
+	cacheKey := "unread_count:" + authPayload.UserID.String()
+	cachedCount, err := server.redis.Get(context.Background(), cacheKey).Int64()
+	if err == nil {
+		ctx.Header("X-Cache", "HIT")
+		ctx.JSON(http.StatusOK, gin.H{"count": cachedCount})
+		return
+	}
+
+	count, err := server.store.GetUnreadMessageCount(ctx, authPayload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	// Cache the result
+	server.redis.Set(context.Background(), cacheKey, count, 30*time.Minute)
+
+	ctx.Header("X-Cache", "MISS")
+	ctx.JSON(http.StatusOK, gin.H{"unread_count": count})
+}
+
+// getConversationList returns list of conversations sorted by most recent message
+func (server *Server) getConversationList(ctx *gin.Context) {
+	authPayload := getAuthPayload(ctx)
+
+	conversations, err := server.store.GetConversationList(ctx, authPayload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Convert to response format
+	type ConversationResponse struct {
+		ID            uuid.UUID `json:"id"`
+		Username      string    `json:"username"`
+		FullName      string    `json:"full_name"`
+		AvatarUrl     string    `json:"avatar_url"`
+		LastMessage   string    `json:"last_message"`
+		LastMessageAt time.Time `json:"last_message_at"`
+		LastSenderID  uuid.UUID `json:"last_sender_id"`
+		UnreadCount   int64     `json:"unread_count"`
+	}
+
+	response := make([]ConversationResponse, len(conversations))
+	for i, conv := range conversations {
+		unreadCount := int64(0)
+		if count, ok := conv.UnreadCount.(int64); ok {
+			unreadCount = count
+		}
+
+		response[i] = ConversationResponse{
+			ID:            conv.ID,
+			Username:      conv.Username,
+			FullName:      conv.FullName,
+			AvatarUrl:     conv.AvatarUrl.String,
+			LastMessage:   conv.LastMessage,
+			LastMessageAt: conv.LastMessageAt,
+			LastSenderID:  conv.LastSenderID,
+			UnreadCount:   unreadCount,
+		}
+	}
+
+	ctx.JSON(http.StatusOK, response)
+}
+
+// deleteConversation deletes all messages between the authenticated user and another user
+func (server *Server) deleteConversation(ctx *gin.Context) {
+	userIDStr := ctx.Param("userId")
+	userID, ok := parseUUIDParam(ctx, userIDStr, "user_id")
+	if !ok {
+		return
+	}
+
+	authPayload := getAuthPayload(ctx)
+
+	// Delete all messages in the conversation
+	err := server.store.DeleteConversation(ctx, db.DeleteConversationParams{
+		SenderID:   authPayload.UserID,
+		ReceiverID: userID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Invalidate cache
+	server.invalidateConversationCache(authPayload.UserID, userID)
+	server.invalidateUnreadCountCache(authPayload.UserID)
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "conversation deleted"})
 }
