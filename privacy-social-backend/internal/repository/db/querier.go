@@ -65,7 +65,10 @@ type Querier interface {
 	GetEngagementStats(ctx context.Context) (GetEngagementStatsRow, error)
 	GetMessage(ctx context.Context, id uuid.UUID) (Message, error)
 	GetMessageReactions(ctx context.Context, messageID uuid.UUID) ([]GetMessageReactionsRow, error)
+	GetMyProfileViews(ctx context.Context, viewerID uuid.UUID) ([]GetMyProfileViewsRow, error)
 	GetPrivacySettings(ctx context.Context, userID uuid.UUID) (PrivacySetting, error)
+	GetProfileViewCount(ctx context.Context, viewedUserID uuid.UUID) (int64, error)
+	GetRecentProfileVisitors(ctx context.Context, viewedUserID uuid.UUID) ([]GetRecentProfileVisitorsRow, error)
 	GetSession(ctx context.Context, id uuid.UUID) (Session, error)
 	// Get stories within a bounding box for map view
 	// AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
@@ -112,6 +115,7 @@ type Querier interface {
 	SearchUsers(ctx context.Context, query string) ([]SearchUsersRow, error)
 	// Privacy Features
 	ToggleGhostMode(ctx context.Context, arg ToggleGhostModeParams) (User, error)
+	TrackProfileView(ctx context.Context, arg TrackProfileViewParams) (ProfileView, error)
 	UnblockUser(ctx context.Context, arg UnblockUserParams) error
 	UpdateConnectionStatus(ctx context.Context, arg UpdateConnectionStatusParams) (Connection, error)
 	UpdateMessage(ctx context.Context, arg UpdateMessageParams) (Message, error)

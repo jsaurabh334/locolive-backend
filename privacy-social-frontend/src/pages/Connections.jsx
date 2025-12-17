@@ -16,18 +16,28 @@ const UserCard = ({ user, action, children }) => (
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="group relative overflow-hidden bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 backdrop-blur-md rounded-2xl transition-all duration-300 p-4"
+        className="group relative overflow-hidden bg-surface/60 backdrop-blur-sm hover:bg-surface/80 border border-border/50 hover:border-primary-500/30 rounded-3xl transition-all duration-300 p-6 shadow-xl hover:shadow-2xl"
     >
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
         <div className="relative flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-1 min-w-0" onClick={action} role="button">
-                <Avatar src={user.avatar_url} alt={user.username} size="lg" className="ring-2 ring-white/10 group-hover:ring-primary-500/50 transition-all duration-300" />
-                <div className="min-w-0">
-                    <h3 className="font-semibold text-text-primary truncate">{user.full_name}</h3>
+            <div className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer" onClick={action} role="button">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500 to-purple-500 rounded-full blur-md opacity-0 group-hover:opacity-50 transition-opacity duration-300" />
+                    <Avatar
+                        src={user.avatar_url}
+                        alt={user.username}
+                        size="lg"
+                        className="relative ring-2 ring-border/30 group-hover:ring-primary-500/50 transition-all duration-300 group-hover:scale-105"
+                    />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-text-primary truncate text-lg">{user.full_name}</h3>
                     <p className="text-sm text-text-secondary truncate">@{user.username}</p>
                     {user.mutual_count > 0 && (
-                        <p className="text-xs text-primary-400 mt-0.5">{user.mutual_count} mutual connections</p>
+                        <p className="text-xs text-primary-400 mt-1 flex items-center gap-1">
+                            <span>🤝</span> {user.mutual_count} mutual connections
+                        </p>
                     )}
                 </div>
             </div>
@@ -84,22 +94,30 @@ const Connections = () => {
     ];
 
     return (
-        <div className="w-full min-h-screen pb-24 pt-safe bg-background">
+        <div className="min-h-screen bg-gradient-to-br from-background via-surface/30 to-background pb-24">
             {/* Header */}
-            <div className="sticky top-0 bg-background/80 backdrop-blur-xl z-30 border-b border-white/5 pb-2">
-                <div className="flex items-center gap-4 px-4 py-4">
-                    <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="-ml-2 hover:bg-white/5 rounded-full">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            <div className="sticky top-0 backdrop-blur-xl bg-background/80 border-b border-border/30 z-30">
+                <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="p-2 rounded-full hover:bg-surface-hover transition-all hover:scale-105"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-text-secondary">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                         </svg>
-                    </Button>
-                    <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-text-primary to-text-secondary">Connections</h1>
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-bold bg-gradient-to-r from-text-primary to-text-secondary bg-clip-text text-transparent">
+                            Connections
+                        </h1>
+                        <p className="text-xs text-text-tertiary">Manage your network</p>
+                    </div>
                 </div>
 
                 {/* Search Bar */}
-                <div className="px-4 mb-2">
+                <div className="max-w-4xl mx-auto px-6 pb-4">
                     <div className="relative group">
-                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-text-tertiary group-focus-within:text-primary-400 transition-colors">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-text-tertiary group-focus-within:text-primary-400 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                                 <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
                             </svg>
@@ -109,34 +127,34 @@ const Connections = () => {
                             placeholder="Find new connections..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/5 rounded-2xl text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:bg-white/10 transition-all font-medium"
+                            className="w-full pl-12 pr-4 py-3.5 bg-surface/60 backdrop-blur-sm border border-border/50 rounded-2xl text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-surface/80 transition-all font-medium shadow-lg"
                         />
                     </div>
                 </div>
 
                 {/* Tabs */}
                 {!debouncedSearch && (
-                    <div className="flex px-4 mt-2 gap-4">
+                    <div className="max-w-4xl mx-auto px-6 flex gap-4">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={cn(
-                                    "relative px-4 py-2 text-sm font-semibold transition-colors duration-300",
+                                    "relative px-5 py-2.5 text-sm font-semibold transition-all duration-300 rounded-full",
                                     activeTab === tab.id ? "text-text-primary" : "text-text-tertiary hover:text-text-secondary"
                                 )}
                             >
                                 {activeTab === tab.id && (
                                     <motion.div
                                         layoutId="activeTab"
-                                        className="absolute inset-0 bg-white/10 rounded-full"
+                                        className="absolute inset-0 bg-surface/60 backdrop-blur-sm border border-border/50 rounded-full shadow-lg"
                                         transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                                     />
                                 )}
                                 <span className="relative z-10 flex items-center gap-2">
                                     {tab.label}
                                     {tab.count > 0 && (
-                                        <span className="bg-primary-500 text-white text-[10px] px-1.5 py-0.5 rounded-full shadow-lg shadow-primary-500/20">
+                                        <span className="bg-gradient-to-r from-primary-500 to-primary-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-primary-500/30 font-bold">
                                             {tab.count}
                                         </span>
                                     )}
@@ -147,13 +165,21 @@ const Connections = () => {
                 )}
             </div>
 
-            <div className="p-4 space-y-6">
+            <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
 
                 {/* Search Results */}
                 <AnimatePresence mode="popLayout">
                     {debouncedSearch ? (
                         <div className="space-y-4">
-                            <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest ml-1">Search Results</h2>
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                                    <span className="text-xl">🔍</span>
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-text-primary">Search Results</h2>
+                                    <p className="text-xs text-text-tertiary">Found {searchResults?.length || 0} users</p>
+                                </div>
+                            </div>
                             {loadingSearch ? <Loader /> : searchResults?.length === 0 ? (
                                 <p className="text-text-secondary text-center py-12">No users found.</p>
                             ) : (
@@ -184,44 +210,58 @@ const Connections = () => {
                                 <motion.div
                                     initial={{ opacity: 0, y: -20 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="mb-6"
+                                    className="mb-8"
                                 >
-                                    <div className="flex items-center justify-between mb-3 px-1">
-                                        <h2 className="text-xs font-bold text-text-tertiary uppercase tracking-widest">Suggested for you</h2>
-                                        <button className="text-xs text-primary-400 font-semibold hover:text-primary-300">View All</button>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                                                <span className="text-xl">✨</span>
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-bold text-text-primary">Suggested for You</h2>
+                                                <p className="text-xs text-text-tertiary">People you may know</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory no-scrollbar">
+                                    <div className="flex overflow-x-auto gap-4 pb-4 -mx-6 px-6 snap-x snap-mandatory no-scrollbar">
                                         {suggested.map((user, i) => (
                                             <motion.div
                                                 key={user.id}
                                                 initial={{ opacity: 0, x: 20 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 transition={{ delay: i * 0.1 }}
-                                                className="snap-start min-w-[160px] max-w-[160px] bg-gradient-to-br from-white/10 to-white/5 border border-white/5 rounded-2xl p-4 flex flex-col items-center gap-3 backdrop-blur-md hover:border-primary-500/30 transition-colors group cursor-pointer"
+                                                className="snap-start min-w-[180px] max-w-[180px] bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-5 flex flex-col items-center gap-4 hover:border-primary-500/30 hover:shadow-2xl transition-all duration-300 group cursor-pointer"
                                                 onClick={() => navigate(`/profile/${user.id}`)}
                                             >
                                                 <div className="relative">
-                                                    <Avatar src={user.avatar_url} alt={user.username} size="lg" className="ring-4 ring-background group-hover:scale-105 transition-transform duration-300" />
+                                                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500 to-purple-500 rounded-full blur-lg opacity-0 group-hover:opacity-50 transition-opacity duration-300" />
+                                                    <Avatar
+                                                        src={user.avatar_url}
+                                                        alt={user.username}
+                                                        size="xl"
+                                                        className="relative ring-4 ring-background group-hover:scale-110 transition-transform duration-300"
+                                                    />
                                                     {user.mutual_count > 0 && (
-                                                        <div className="absolute -bottom-1 -right-1 bg-surface border border-border text-[10px] text-text-primary px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                                                        <div className="absolute -bottom-2 -right-2 bg-gradient-to-br from-primary-500 to-primary-600 border-2 border-background text-[10px] text-white px-2 py-1 rounded-full flex items-center gap-1 shadow-lg font-bold">
                                                             🤝 {user.mutual_count}
                                                         </div>
                                                     )}
                                                 </div>
                                                 <div className="text-center w-full">
-                                                    <h3 className="font-bold text-text-primary text-sm truncate w-full">{user.username}</h3>
-                                                    <p className="text-[10px] text-text-secondary truncate w-full">
+                                                    <h3 className="font-bold text-text-primary text-sm truncate w-full mb-1">{user.full_name}</h3>
+                                                    <p className="text-xs text-text-secondary truncate w-full">@{user.username}</p>
+                                                    <p className="text-[10px] text-text-tertiary mt-1">
                                                         {user.mutual_count > 0 ? 'Mutual connections' : 'New to app'}
                                                     </p>
                                                 </div>
                                                 <Button
-                                                    size="xs"
+                                                    size="sm"
                                                     variant="primary"
-                                                    className="w-full mt-1 bg-white/10 hover:bg-white/20 text-white border-0 shadow-none backdrop-blur-sm"
+                                                    className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 border-0 shadow-lg"
                                                     onClick={(e) => { e.stopPropagation(); handleConnect(user.id); }}
                                                     isLoading={sendRequest.isPending && sendRequest.variables === user.id}
                                                 >
-                                                    Connect
+                                                    + Connect
                                                 </Button>
                                             </motion.div>
                                         ))}

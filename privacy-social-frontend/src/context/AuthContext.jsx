@@ -6,7 +6,7 @@ import { useMutation } from '@tanstack/react-query';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-    const { setAuth, logout, user, isAuthenticated, isHydrated, accessToken } = useAuthStore();
+    const { setAuth, updateUser, logout, user, isAuthenticated, isHydrated, accessToken } = useAuthStore();
 
     const loginMutation = useMutation({
         mutationFn: (credentials) => apiService.login(credentials),
@@ -42,6 +42,8 @@ export const AuthProvider = ({ children }) => {
             login: loginMutation.mutateAsync,
             register: registerMutation.mutateAsync,
             logout: handleLogout,
+            setAuth, // Expose setAuth for updating user state
+            updateUser, // Expose updateUser for partial updates
             isLoading: loginMutation.isPending || registerMutation.isPending,
             error: loginMutation.error || registerMutation.error,
             isHydrated

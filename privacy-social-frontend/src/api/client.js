@@ -80,6 +80,8 @@ const apiService = {
     getActivityStatus: () => apiClient.get('/activity/status'),
     searchUsers: (query) => apiClient.get(`/users/search?q=${query}`),
     uploadFile: (formData) => apiClient.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    getProfileVisitors: () => apiClient.get('/profile/visitors'),
+    panicMode: () => apiClient.post('/location/panic'),
 
     // Admin
     adminListUsers: (page = 1, pageSize = 20) => apiClient.get(`/admin/users?page=${page}&page_size=${pageSize}`),

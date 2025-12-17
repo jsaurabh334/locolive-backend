@@ -32,6 +32,7 @@ type userResponse struct {
 	Theme             string    `json:"theme"`
 	ProfileVisibility string    `json:"profile_visibility"`
 	Email             string    `json:"email"`
+	IsGhostMode       bool      `json:"is_ghost_mode"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 
@@ -47,6 +48,7 @@ func newUserResponse(user db.User) userResponse {
 		Theme:             user.Theme.String,
 		ProfileVisibility: user.ProfileVisibility.String,
 		Email:             user.Email.String,
+		IsGhostMode:       user.IsGhostMode,
 		CreatedAt:         user.CreatedAt,
 	}
 }

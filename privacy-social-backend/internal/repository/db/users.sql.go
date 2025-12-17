@@ -424,7 +424,7 @@ func (q *Queries) GetUserEngagementStats(ctx context.Context, userID uuid.UUID) 
 
 const getUserProfile = `-- name: GetUserProfile :one
 SELECT 
-  u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.created_at, u.is_premium, u.last_active_at,
+  u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.email, u.is_ghost_mode, u.created_at, u.is_premium, u.last_active_at,
   (SELECT COUNT(*) FROM stories WHERE stories.user_id = u.id) as story_count,
   (SELECT COUNT(*) FROM connections WHERE connections.requester_id = u.id OR connections.target_id = u.id) as connection_count,
   CASE
@@ -448,6 +448,8 @@ type GetUserProfileRow struct {
 	BannerUrl         sql.NullString `json:"banner_url"`
 	Theme             sql.NullString `json:"theme"`
 	ProfileVisibility sql.NullString `json:"profile_visibility"`
+	Email             sql.NullString `json:"email"`
+	IsGhostMode       bool           `json:"is_ghost_mode"`
 	CreatedAt         time.Time      `json:"created_at"`
 	IsPremium         sql.NullBool   `json:"is_premium"`
 	LastActiveAt      sql.NullTime   `json:"last_active_at"`
@@ -469,6 +471,8 @@ func (q *Queries) GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProf
 		&i.BannerUrl,
 		&i.Theme,
 		&i.ProfileVisibility,
+		&i.Email,
+		&i.IsGhostMode,
 		&i.CreatedAt,
 		&i.IsPremium,
 		&i.LastActiveAt,

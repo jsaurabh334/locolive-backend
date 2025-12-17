@@ -24,6 +24,7 @@ const Connections = React.lazy(() => import('./pages/Connections'));
 const Chat = React.lazy(() => import('./pages/Chat'));
 const StoryMap = React.lazy(() => import('./pages/StoryMap'));
 const Settings = React.lazy(() => import('./pages/Settings'));
+const Crossings = React.lazy(() => import('./pages/Crossings'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,6 +93,7 @@ function App() {
                         <Route path="/map" element={<StoryMap />} />
                         <Route path="/messages" element={<Chat />} />
                         <Route path="/chat" element={<Chat />} />
+                        <Route path="/crossings" element={<Crossings />} />
                         <Route path="/settings" element={<Settings />} />
                       </Route>
                     </Route>

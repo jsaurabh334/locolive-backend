@@ -98,6 +98,7 @@ func (server *Server) setupRouter() {
 	authRoutes.GET("/users/search", server.searchUsers)
 	authRoutes.GET("/users/:id", server.getUserProfile)
 	authRoutes.GET("/profile/me", server.getMyProfile)
+	authRoutes.GET("/profile/visitors", server.getProfileVisitors)
 
 	// Admin routes
 	adminRoutes := router.Group("/admin")

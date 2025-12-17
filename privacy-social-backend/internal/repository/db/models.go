@@ -306,6 +306,13 @@ type PrivacySetting struct {
 	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }
 
+type ProfileView struct {
+	ID           uuid.UUID `json:"id"`
+	ViewerID     uuid.UUID `json:"viewer_id"`
+	ViewedUserID uuid.UUID `json:"viewed_user_id"`
+	ViewedAt     time.Time `json:"viewed_at"`
+}
+
 type Report struct {
 	ID            uuid.UUID      `json:"id"`
 	ReporterID    uuid.UUID      `json:"reporter_id"`

@@ -9,6 +9,7 @@ export const useAuthStore = create(
             isAuthenticated: false,
             isHydrated: false,
             setAuth: (user, token) => set({ user, accessToken: token, isAuthenticated: !!token }),
+            updateUser: (updates) => set((state) => ({ user: { ...state.user, ...updates } })),
             logout: () => set({ user: null, accessToken: null, isAuthenticated: false }),
             setHydrated: () => set({ isHydrated: true }),
         }),

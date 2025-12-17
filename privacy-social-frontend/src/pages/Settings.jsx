@@ -10,163 +10,48 @@ import Card from '../components/ui/Card';
 const Settings = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState('profile');
-
-    const tabs = [
-        { id: 'profile', label: 'Profile', icon: '👤' },
-        { id: 'privacy', label: 'Privacy', icon: '🔒' },
-        { id: 'account', label: 'Account', icon: '⚙️' },
-        { id: 'appearance', label: 'Appearance', icon: '🎨' },
-    ];
 
     return (
-        <div className="h-full flex flex-col pb-safe">
-            {/* Header */}
-            <div className="flex items-center gap-3 p-4 border-b border-border bg-surface/50 backdrop-blur sticky top-0 z-30">
-                <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                    </svg>
-                </Button>
-                <h1 className="text-xl font-bold text-text-primary">Settings</h1>
-            </div>
-
-            <div className="flex-1 flex overflow-hidden">
-                {/* Sidebar Tabs */}
-                <div className="w-64 border-r border-border bg-surface/30 p-4 space-y-1 overflow-y-auto">
-                    {tabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === tab.id
-                                ? 'bg-primary-500 text-white'
-                                : 'text-text-secondary hover:bg-surface-hover'
-                                }`}
-                        >
-                            <span className="text-xl">{tab.icon}</span>
-                            <span className="font-medium">{tab.label}</span>
-                        </button>
-                    ))}
-                </div>
-
-                {/* Content Area */}
-                <div className="flex-1 overflow-y-auto p-6">
-                    {activeTab === 'profile' && <ProfileSettings user={user} />}
-                    {activeTab === 'privacy' && <PrivacySettings />}
-                    {activeTab === 'account' && <AccountSettings user={user} />}
-                    {activeTab === 'appearance' && <AppearanceSettings />}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Profile Settings Tab
-const ProfileSettings = ({ user }) => {
-    const queryClient = useQueryClient();
-    const [formData, setFormData] = useState({
-        full_name: user?.full_name || '',
-        bio: user?.bio || '',
-        username: user?.username || ''
-    });
-
-    // Update local state when user prop changes (e.g. after refetch)
-    useEffect(() => {
-        if (user) {
-            setFormData(prev => {
-                // Only update if values actually changed to avoid loop
-                if (prev.full_name === user.full_name &&
-                    prev.bio === user.bio &&
-                    prev.username === user.username) {
-                    return prev;
-                }
-                return {
-                    full_name: user.full_name || '',
-                    bio: user.bio || '',
-                    username: user.username || ''
-                };
-            });
-        }
-    }, [user?.full_name, user?.bio, user?.username]);
-
-    const updateProfileMutation = useMutation({
-        mutationFn: (data) => apiClient.updateProfile(data),
-        onSuccess: (updatedUser) => {
-            // Update auth user data in cache
-            queryClient.invalidateQueries(['auth-user']);
-            // Also update query cache for getMyProfile
-            queryClient.setQueryData(['my-profile'], updatedUser);
-        }
-    });
-
-    const handleSave = () => {
-        updateProfileMutation.mutate(formData);
-    };
-
-    return (
-        <div className="max-w-2xl space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-text-primary mb-2">Profile Information</h2>
-                <p className="text-text-secondary">Update your profile details and how others see you</p>
-            </div>
-
-            <Card>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-text-primary mb-2">Username</label>
-                        <input
-                            type="text"
-                            value={formData.username}
-                            onChange={e => setFormData({ ...formData, username: e.target.value })}
-                            className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                        <p className="text-xs text-text-tertiary mt-1">Username can be changed</p>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-text-primary mb-2">Full Name</label>
-                        <input
-                            type="text"
-                            value={formData.full_name}
-                            onChange={e => setFormData({ ...formData, full_name: e.target.value })}
-                            className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-text-primary mb-2">Bio</label>
-                        <textarea
-                            value={formData.bio}
-                            onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                            placeholder="Tell us about yourself..."
-                            maxLength={150}
-                            className="w-full px-4 py-2 bg-surface border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none h-24"
-                        />
-                        <p className="text-xs text-text-tertiary mt-1">{formData.bio.length}/150 characters</p>
-                    </div>
-
-                    <Button
-                        onClick={handleSave}
-                        isLoading={updateProfileMutation.isPending}
-                        className="w-full"
+        <div className="min-h-screen bg-gradient-to-br from-background via-surface/30 to-background">
+            {/* Floating Header */}
+            <div className="sticky top-0 z-40 backdrop-blur-xl bg-background/80 border-b border-border/30">
+                <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="p-2 rounded-full hover:bg-surface-hover transition-all hover:scale-105"
                     >
-                        {updateProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
-                    </Button>
-
-                    {updateProfileMutation.isSuccess && (
-                        <p className="text-green-500 text-sm text-center mt-2">Profile updated successfully!</p>
-                    )}
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-text-secondary">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                        </svg>
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-bold bg-gradient-to-r from-text-primary to-text-secondary bg-clip-text text-transparent">
+                            Settings
+                        </h1>
+                        <p className="text-xs text-text-tertiary">Manage your privacy & preferences</p>
+                    </div>
                 </div>
-            </Card>
+            </div>
+
+            {/* Single Scroll Layout */}
+            <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+                {/* Privacy & Visibility Section */}
+                <PrivacySettings />
+
+                {/* Account & Security Section */}
+                <AccountSettings user={user} />
+
+                {/* Appearance Section */}
+                <AppearanceSettings />
+            </div>
         </div>
     );
 };
 
-// Privacy Settings Tab
+// Privacy Settings - Redesigned
 const PrivacySettings = () => {
     const queryClient = useQueryClient();
 
-    // Fetch privacy settings
     const { data: settings, isLoading } = useQuery({
         queryKey: ['privacy-settings'],
         queryFn: async () => {
@@ -178,7 +63,6 @@ const PrivacySettings = () => {
     const updatePrivacyMutation = useMutation({
         mutationFn: (newSettings) => apiClient.updatePrivacySettings(newSettings),
         onMutate: async (newSettings) => {
-            // Optimistic update
             await queryClient.cancelQueries(['privacy-settings']);
             const previousSettings = queryClient.getQueryData(['privacy-settings']);
             queryClient.setQueryData(['privacy-settings'], (old) => ({ ...old, ...newSettings }));
@@ -205,78 +89,174 @@ const PrivacySettings = () => {
         updatePrivacyMutation.mutate(payload);
     };
 
-    if (isLoading) return <div>Loading settings...</div>;
+    if (isLoading) return <div className="text-text-secondary animate-pulse">Loading...</div>;
 
     return (
-        <div className="max-w-2xl space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-text-primary mb-2">Privacy & Security</h2>
-                <p className="text-text-secondary">Control who can see your content and interact with you</p>
+        <div className="space-y-6">
+            {/* Privacy Header */}
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+                    <span className="text-xl">🔒</span>
+                </div>
+                <div>
+                    <h2 className="text-lg font-bold text-text-primary">Privacy & Visibility</h2>
+                    <p className="text-xs text-text-tertiary">Control who sees what</p>
+                </div>
             </div>
 
-            <Card>
-                <div className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-medium text-text-primary mb-3">Who can see your stories?</label>
-                        <div className="space-y-2">
-                            {['everyone', 'connections', 'nobody'].map(option => (
-                                <label key={option} className="flex items-center gap-3 p-3 rounded-lg hover:bg-surface-hover cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="who_can_see_stories"
-                                        value={option}
-                                        checked={settings?.who_can_see_stories === option}
-                                        onChange={(e) => handleChange('who_can_see_stories', e.target.value)}
-                                        className="w-4 h-4 text-primary-500"
-                                    />
-                                    <span className="text-text-primary capitalize">{option}</span>
-                                </label>
-                            ))}
-                        </div>
+            {/* Main Privacy Card */}
+            <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 space-y-6">
+                {/* Story Visibility */}
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                        <span className="text-lg">👁️</span>
+                        <label className="text-sm font-semibold text-text-primary">Story Visibility</label>
                     </div>
-
-                    <div className="border-t border-border pt-6">
-                        <label className="block text-sm font-medium text-text-primary mb-3">Who can message you?</label>
-                        <div className="space-y-2">
-                            {['everyone', 'connections', 'nobody'].map(option => (
-                                <label key={option} className="flex items-center gap-3 p-3 rounded-lg hover:bg-surface-hover cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="who_can_message"
-                                        value={option}
-                                        checked={settings?.who_can_message === option}
-                                        onChange={(e) => handleChange('who_can_message', e.target.value)}
-                                        className="w-4 h-4 text-primary-500"
-                                    />
-                                    <span className="text-text-primary capitalize">{option}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t border-border pt-6">
-                        <label className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-hover cursor-pointer">
-                            <div>
-                                <p className="text-sm font-medium text-text-primary">Show Location</p>
-                                <p className="text-xs text-text-secondary mt-1">Allow others to see your approximate location</p>
-                            </div>
-                            <input
-                                type="checkbox"
-                                checked={settings?.show_location ?? true}
-                                onChange={(e) => handleChange('show_location', e.target.checked)}
-                                className="w-5 h-5 text-primary-500 rounded"
-                            />
-                        </label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {['everyone', 'connections', 'nobody'].map(option => (
+                            <button
+                                key={option}
+                                onClick={() => handleChange('who_can_see_stories', option)}
+                                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${settings?.who_can_see_stories === option
+                                    ? 'bg-primary-500 text-white shadow-lg scale-105'
+                                    : 'bg-background/70 text-text-secondary hover:bg-surface-hover'
+                                    }`}
+                            >
+                                {option === 'everyone' ? '🌍' : option === 'connections' ? '👥' : '🚫'}
+                                <span className="block text-xs mt-1 capitalize">{option}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
-            </Card>
 
+                <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
+
+                {/* Message Privacy */}
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                        <span className="text-lg">💬</span>
+                        <label className="text-sm font-semibold text-text-primary">Who Can Message</label>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                        {['everyone', 'connections', 'nobody'].map(option => (
+                            <button
+                                key={option}
+                                onClick={() => handleChange('who_can_message', option)}
+                                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${settings?.who_can_message === option
+                                    ? 'bg-primary-500 text-white shadow-lg scale-105'
+                                    : 'bg-background/70 text-text-secondary hover:bg-surface-hover'
+                                    }`}
+                            >
+                                {option === 'everyone' ? '🌍' : option === 'connections' ? '👥' : '🚫'}
+                                <span className="block text-xs mt-1 capitalize">{option}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
+
+                {/* Location Toggle */}
+                <label className="flex items-center justify-between p-4 rounded-2xl bg-background/50 cursor-pointer hover:bg-background/70 transition-all group">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">📍</span>
+                        <div>
+                            <p className="text-sm font-semibold text-text-primary">Share Location</p>
+                            <p className="text-xs text-text-secondary">Show approximate location</p>
+                        </div>
+                    </div>
+                    <div className="relative">
+                        <input
+                            type="checkbox"
+                            checked={settings?.show_location ?? true}
+                            onChange={(e) => handleChange('show_location', e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-surface-hover rounded-full peer peer-checked:bg-primary-500 transition-all"></div>
+                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-md"></div>
+                    </div>
+                </label>
+
+                <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
+
+                {/* Ghost Mode */}
+                <GhostModeToggle />
+            </div>
+
+            {/* Blocked Users */}
             <BlockedUsersList />
         </div>
     );
 };
 
-// Component to manage blocked users
+// Ghost Mode Toggle - Redesigned
+const GhostModeToggle = () => {
+    const { user, setAuth, updateUser } = useAuth();
+    const queryClient = useQueryClient();
+
+    const toggleGhostMode = useMutation({
+        mutationFn: (enabled) => apiClient.toggleGhostMode(enabled),
+        onMutate: async (enabled) => {
+            // Optimistically update using updateUser for proper reactivity
+            console.log('onMutate: Updating is_ghost_mode to', enabled);
+            updateUser({ is_ghost_mode: enabled });
+            return { previousValue: user?.is_ghost_mode };
+        },
+        onSuccess: async (response, variables, context) => {
+            console.log('onSuccess: Backend returned user with is_ghost_mode:', response.data?.is_ghost_mode);
+            // The toggle API now returns the updated user object directly
+            if (response.data) {
+                setAuth(response.data, localStorage.getItem('access_token'));
+            }
+            queryClient.invalidateQueries(['my-profile']);
+        },
+        onError: (error, variables, context) => {
+            console.error('Failed to toggle ghost mode:', error);
+            // Rollback on error
+            if (context?.previousValue !== undefined) {
+                updateUser({ is_ghost_mode: context.previousValue });
+            }
+        }
+    });
+
+    const handleToggle = (enabled) => {
+        console.log('Ghost Mode toggle clicked, new value:', enabled);
+        console.log('Current user.is_ghost_mode:', user?.is_ghost_mode);
+        toggleGhostMode.mutate(enabled);
+    };
+
+    return (
+        <label className="flex items-center justify-between p-4 rounded-2xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 cursor-pointer hover:shadow-lg transition-all group">
+            <div className="flex items-center gap-3">
+                <span className="text-2xl">👻</span>
+                <div>
+                    <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-text-primary">Ghost Mode</p>
+                        {user?.is_ghost_mode && (
+                            <span className="px-2 py-0.5 text-xs font-bold bg-purple-500 text-white rounded-full animate-pulse">
+                                ON
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs text-text-secondary">Become invisible on map & feed</p>
+                </div>
+            </div>
+            <div className="relative">
+                <input
+                    type="checkbox"
+                    checked={!!user?.is_ghost_mode}
+                    onChange={(e) => handleToggle(e.target.checked)}
+                    disabled={toggleGhostMode.isPending}
+                    className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-surface-hover rounded-full peer peer-checked:bg-purple-500 transition-all"></div>
+                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-md"></div>
+            </div>
+        </label>
+    );
+};
+
+// Blocked Users - Compact Design
 const BlockedUsersList = () => {
     const queryClient = useQueryClient();
     const { data: blockedUsers, isLoading } = useQuery({
@@ -295,58 +275,49 @@ const BlockedUsersList = () => {
     });
 
     if (isLoading) return null;
+    if (!blockedUsers || blockedUsers.length === 0) return null;
 
     return (
-        <Card className="border-red-500/10">
-            <h3 className="font-bold text-text-primary mb-4">Blocked Users</h3>
-            {blockedUsers?.length === 0 ? (
-                <p className="text-text-secondary text-sm">You haven't blocked anyone.</p>
-            ) : (
-                <div className="space-y-3">
-                    {blockedUsers?.map(user => (
-                        <div key={user.id} className="flex items-center justify-between p-3 bg-surface-hover rounded-lg">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-surface border border-border overflow-hidden">
-                                    {user.avatar_url ? (
-                                        <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-text-secondary">
-                                            {user.username[0].toUpperCase()}
-                                        </div>
-                                    )}
-                                </div>
-                                <span className="font-medium text-text-primary">{user.username}</span>
+        <div className="bg-surface/60 backdrop-blur-sm border border-red-500/20 rounded-3xl p-6 shadow-xl">
+            <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">🚫</span>
+                <h3 className="text-sm font-bold text-text-primary">Blocked Users</h3>
+                <span className="ml-auto text-xs text-text-tertiary">{blockedUsers.length}</span>
+            </div>
+            <div className="space-y-2">
+                {blockedUsers.map(user => (
+                    <div key={user.id} className="flex items-center justify-between p-3 bg-background/50 rounded-xl hover:bg-background/70 transition-all">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-white text-xs font-bold">
+                                {user.username[0].toUpperCase()}
                             </div>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-400 hover:text-red-500"
-                                onClick={() => unblockMutation.mutate(user.id)}
-                                isLoading={unblockMutation.isPending}
-                            >
-                                Unblock
-                            </Button>
+                            <span className="text-sm font-medium text-text-primary">{user.username}</span>
                         </div>
-                    ))}
-                </div>
-            )}
-        </Card>
+                        <button
+                            onClick={() => unblockMutation.mutate(user.id)}
+                            disabled={unblockMutation.isPending}
+                            className="text-xs text-red-400 hover:text-red-500 font-medium transition-colors"
+                        >
+                            Unblock
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 };
 
-// Account Settings Tab
+// Account Settings - Redesigned
 const AccountSettings = ({ user }) => {
     const queryClient = useQueryClient();
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
-    // Email State
     const [email, setEmail] = useState('');
     useEffect(() => {
         if (user?.email) setEmail(user.email);
     }, [user]);
 
-    // Password State
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
 
@@ -379,54 +350,75 @@ const AccountSettings = ({ user }) => {
     });
 
     return (
-        <div className="max-w-2xl space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-text-primary mb-2">Account Settings</h2>
-                <p className="text-text-secondary">Manage your account and data</p>
+        <div className="space-y-6">
+            {/* Account Header */}
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center shadow-lg">
+                    <span className="text-xl">⚙️</span>
+                </div>
+                <div>
+                    <h2 className="text-lg font-bold text-text-primary">Account & Security</h2>
+                    <p className="text-xs text-text-tertiary">Manage credentials & data</p>
+                </div>
             </div>
 
-            <Card>
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-surface-hover rounded-lg">
+            {/* Credentials Card */}
+            <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 space-y-3">
+                <div className="flex items-center justify-between p-4 bg-background/50 rounded-2xl hover:bg-background/70 transition-all group">
+                    <div className="flex items-center gap-3">
+                        <span className="text-xl">📧</span>
                         <div>
-                            <p className="font-medium text-text-primary">Email</p>
-                            <p className="text-sm text-text-secondary">{user?.email || 'Not set'}</p>
+                            <p className="text-sm font-semibold text-text-primary">Email</p>
+                            <p className="text-xs text-text-secondary">{user?.email || 'Not set'}</p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => setIsEmailModalOpen(true)}>Change</Button>
                     </div>
+                    <button
+                        onClick={() => setIsEmailModalOpen(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-primary-500 hover:bg-primary-500/10 rounded-lg transition-all"
+                    >
+                        Change
+                    </button>
+                </div>
 
-                    <div className="flex items-center justify-between p-4 bg-surface-hover rounded-lg">
+                <div className="flex items-center justify-between p-4 bg-background/50 rounded-2xl hover:bg-background/70 transition-all group">
+                    <div className="flex items-center gap-3">
+                        <span className="text-xl">🔑</span>
                         <div>
-                            <p className="font-medium text-text-primary">Password</p>
-                            <p className="text-sm text-text-secondary">••••••••</p>
+                            <p className="text-sm font-semibold text-text-primary">Password</p>
+                            <p className="text-xs text-text-secondary">••••••••</p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => setIsPasswordModalOpen(true)}>Change</Button>
                     </div>
+                    <button
+                        onClick={() => setIsPasswordModalOpen(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-primary-500 hover:bg-primary-500/10 rounded-lg transition-all"
+                    >
+                        Change
+                    </button>
                 </div>
-            </Card>
+            </div>
 
-            <Card className="border-red-500/20">
-                <div className="space-y-4">
-                    <h3 className="font-bold text-red-400">Danger Zone</h3>
-                    <Button variant="ghost" className="w-full text-red-400 hover:bg-red-500/10">
-                        Delete Account
-                    </Button>
+            {/* Danger Zone */}
+            <div className="bg-gradient-to-br from-red-500/10 to-orange-500/10 backdrop-blur-sm border border-red-500/30 rounded-3xl p-6 shadow-xl">
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xl">⚠️</span>
+                    <h3 className="text-sm font-bold text-red-400">Danger Zone</h3>
                 </div>
-            </Card>
+                <PanicModeButton />
+            </div>
 
-            {/* Email Modal */}
+            {/* Modals */}
             {isEmailModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <Card className="w-full max-w-md space-y-4">
-                        <h3 className="font-bold text-lg text-text-primary">Update Email</h3>
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-lg animate-fade-in">
+                    <div className="bg-surface border border-border/60 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+                        <h3 className="text-lg font-bold text-text-primary">Update Email</h3>
                         <input
                             type="email"
                             placeholder="New Email Address"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full p-2 bg-surface border border-border rounded-lg text-text-primary"
+                            className="w-full px-4 py-3 bg-background/70 border-0 rounded-2xl text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 shadow-inner"
                         />
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 pt-2">
                             <Button variant="ghost" onClick={() => setIsEmailModalOpen(false)}>Cancel</Button>
                             <Button
                                 variant="primary"
@@ -436,30 +428,29 @@ const AccountSettings = ({ user }) => {
                                 Save
                             </Button>
                         </div>
-                    </Card>
+                    </div>
                 </div>
             )}
 
-            {/* Password Modal */}
             {isPasswordModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <Card className="w-full max-w-md space-y-4">
-                        <h3 className="font-bold text-lg text-text-primary">Change Password</h3>
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-lg animate-fade-in">
+                    <div className="bg-surface border border-border/60 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+                        <h3 className="text-lg font-bold text-text-primary">Change Password</h3>
                         <input
                             type="password"
                             placeholder="Current Password"
                             value={currentPassword}
                             onChange={(e) => setCurrentPassword(e.target.value)}
-                            className="w-full p-2 bg-surface border border-border rounded-lg text-text-primary"
+                            className="w-full px-4 py-3 bg-background/70 border-0 rounded-2xl text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 shadow-inner"
                         />
                         <input
                             type="password"
                             placeholder="New Password (min 6 chars)"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full p-2 bg-surface border border-border rounded-lg text-text-primary"
+                            className="w-full px-4 py-3 bg-background/70 border-0 rounded-2xl text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-500/50 shadow-inner"
                         />
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 pt-2">
                             <Button variant="ghost" onClick={() => setIsPasswordModalOpen(false)}>Cancel</Button>
                             <Button
                                 variant="primary"
@@ -467,53 +458,157 @@ const AccountSettings = ({ user }) => {
                                 isLoading={updatePasswordMutation.isPending}
                                 disabled={!currentPassword || newPassword.length < 6}
                             >
-                                Update Password
+                                Update
                             </Button>
                         </div>
-                    </Card>
+                    </div>
                 </div>
             )}
         </div>
     );
 };
 
+// Panic Mode - Redesigned
+const PanicModeButton = () => {
+    const navigate = useNavigate();
+    const { logout } = useAuth();
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [confirmText, setConfirmText] = useState('');
 
+    const panicMutation = useMutation({
+        mutationFn: () => apiClient.panicMode(),
+        onSuccess: () => {
+            alert('All your data has been permanently deleted.');
+            logout();
+            navigate('/login');
+        },
+        onError: (error) => {
+            alert(error.response?.data?.error || 'Failed to activate panic mode');
+        }
+    });
 
-// Appearance Settings Tab
+    const handlePanic = () => {
+        if (confirmText !== 'DELETE') {
+            alert('Please type DELETE to confirm');
+            return;
+        }
+        panicMutation.mutate();
+    };
+
+    return (
+        <>
+            <button
+                onClick={() => setShowConfirm(true)}
+                className="w-full px-4 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold rounded-2xl transition-all hover:scale-105 flex items-center justify-center gap-2"
+            >
+                <span>🚨</span>
+                <span>Delete All My Data</span>
+            </button>
+
+            {showConfirm && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-xl animate-fade-in">
+                    <div className="bg-surface border-2 border-red-500/50 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5">
+                        <div className="flex items-start gap-3">
+                            <span className="text-4xl">⚠️</span>
+                            <div>
+                                <h3 className="text-xl font-bold text-red-400">Panic Mode</h3>
+                                <p className="text-sm text-text-secondary mt-1">This cannot be undone!</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
+                            <p className="text-sm text-text-primary font-semibold mb-2">Will permanently delete:</p>
+                            <ul className="text-xs text-text-secondary space-y-1 list-disc list-inside">
+                                <li>All stories and posts</li>
+                                <li>All messages and conversations</li>
+                                <li>All connections and requests</li>
+                                <li>Profile and account data</li>
+                                <li>Location history</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-text-primary mb-2">
+                                Type <span className="text-red-400">DELETE</span> to confirm
+                            </label>
+                            <input
+                                type="text"
+                                value={confirmText}
+                                onChange={(e) => setConfirmText(e.target.value)}
+                                placeholder="Type DELETE"
+                                className="w-full px-4 py-3 bg-background/70 border-0 rounded-2xl text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-red-500/50 shadow-inner"
+                            />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    setShowConfirm(false);
+                                    setConfirmText('');
+                                }}
+                                disabled={panicMutation.isPending}
+                                className="flex-1"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="primary"
+                                onClick={handlePanic}
+                                isLoading={panicMutation.isPending}
+                                disabled={confirmText !== 'DELETE'}
+                                className="flex-1 bg-red-500 hover:bg-red-600"
+                            >
+                                Delete Everything
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
+// Appearance Settings - Redesigned
 const AppearanceSettings = () => {
     const { theme, setTheme } = useTheme();
 
     return (
-        <div className="max-w-2xl space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-text-primary mb-2">Appearance</h2>
-                <p className="text-text-secondary">Customize how the app looks</p>
+        <div className="space-y-6">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-500 to-orange-500 flex items-center justify-center shadow-lg">
+                    <span className="text-xl">🎨</span>
+                </div>
+                <div>
+                    <h2 className="text-lg font-bold text-text-primary">Appearance</h2>
+                    <p className="text-xs text-text-tertiary">Customize your experience</p>
+                </div>
             </div>
 
-            <Card>
-                <div className="space-y-4">
-                    <label className="block text-sm font-medium text-text-primary mb-3">Theme</label>
-                    <div className="grid grid-cols-3 gap-3">
-                        {[
-                            { value: 'light', label: 'Light', icon: '☀️' },
-                            { value: 'dark', label: 'Dark', icon: '🌙' },
-                            { value: 'auto', label: 'Auto', icon: '🔄' }
-                        ].map(option => (
-                            <button
-                                key={option.value}
-                                onClick={() => setTheme(option.value)}
-                                className={`p-4 rounded-lg border-2 transition-all ${theme === option.value
-                                    ? 'border-primary-500 bg-primary-500/10'
-                                    : 'border-border hover:border-primary-500/50'
-                                    }`}
-                            >
-                                <div className="text-3xl mb-2">{option.icon}</div>
-                                <div className="text-sm font-medium text-text-primary">{option.label}</div>
-                            </button>
-                        ))}
-                    </div>
+            <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300">
+                <label className="block text-sm font-semibold text-text-primary mb-4">Theme</label>
+                <div className="grid grid-cols-3 gap-3">
+                    {[
+                        { value: 'light', label: 'Light', icon: '☀️', gradient: 'from-yellow-400 to-orange-400' },
+                        { value: 'dark', label: 'Dark', icon: '🌙', gradient: 'from-indigo-500 to-purple-500' },
+                        { value: 'auto', label: 'Auto', icon: '🔄', gradient: 'from-blue-500 to-cyan-500' }
+                    ].map(option => (
+                        <button
+                            key={option.value}
+                            onClick={() => setTheme(option.value)}
+                            className={`p-5 rounded-2xl border-2 transition-all ${theme === option.value
+                                ? 'border-primary-500 bg-primary-500/10 shadow-xl scale-105'
+                                : 'border-border/40 hover:border-primary-500/50 hover:shadow-lg'
+                                }`}
+                        >
+                            <div className={`w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br ${option.gradient} flex items-center justify-center text-2xl shadow-lg`}>
+                                {option.icon}
+                            </div>
+                            <div className="text-sm font-semibold text-text-primary">{option.label}</div>
+                        </button>
+                    ))}
                 </div>
-            </Card>
+            </div>
         </div>
     );
 };

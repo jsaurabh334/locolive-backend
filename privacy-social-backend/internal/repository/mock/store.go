@@ -733,6 +733,21 @@ func (mr *MockStoreMockRecorder) GetMessageReactions(ctx, messageID any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessageReactions", reflect.TypeOf((*MockStore)(nil).GetMessageReactions), ctx, messageID)
 }
 
+// GetMyProfileViews mocks base method.
+func (m *MockStore) GetMyProfileViews(ctx context.Context, viewerID uuid.UUID) ([]db.GetMyProfileViewsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMyProfileViews", ctx, viewerID)
+	ret0, _ := ret[0].([]db.GetMyProfileViewsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMyProfileViews indicates an expected call of GetMyProfileViews.
+func (mr *MockStoreMockRecorder) GetMyProfileViews(ctx, viewerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMyProfileViews", reflect.TypeOf((*MockStore)(nil).GetMyProfileViews), ctx, viewerID)
+}
+
 // GetPrivacySettings mocks base method.
 func (m *MockStore) GetPrivacySettings(ctx context.Context, userID uuid.UUID) (db.PrivacySetting, error) {
 	m.ctrl.T.Helper()
@@ -746,6 +761,36 @@ func (m *MockStore) GetPrivacySettings(ctx context.Context, userID uuid.UUID) (d
 func (mr *MockStoreMockRecorder) GetPrivacySettings(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPrivacySettings", reflect.TypeOf((*MockStore)(nil).GetPrivacySettings), ctx, userID)
+}
+
+// GetProfileViewCount mocks base method.
+func (m *MockStore) GetProfileViewCount(ctx context.Context, viewedUserID uuid.UUID) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetProfileViewCount", ctx, viewedUserID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetProfileViewCount indicates an expected call of GetProfileViewCount.
+func (mr *MockStoreMockRecorder) GetProfileViewCount(ctx, viewedUserID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProfileViewCount", reflect.TypeOf((*MockStore)(nil).GetProfileViewCount), ctx, viewedUserID)
+}
+
+// GetRecentProfileVisitors mocks base method.
+func (m *MockStore) GetRecentProfileVisitors(ctx context.Context, viewedUserID uuid.UUID) ([]db.GetRecentProfileVisitorsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRecentProfileVisitors", ctx, viewedUserID)
+	ret0, _ := ret[0].([]db.GetRecentProfileVisitorsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRecentProfileVisitors indicates an expected call of GetRecentProfileVisitors.
+func (mr *MockStoreMockRecorder) GetRecentProfileVisitors(ctx, viewedUserID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecentProfileVisitors", reflect.TypeOf((*MockStore)(nil).GetRecentProfileVisitors), ctx, viewedUserID)
 }
 
 // GetSession mocks base method.
@@ -1284,6 +1329,21 @@ func (m *MockStore) ToggleGhostMode(ctx context.Context, arg db.ToggleGhostModeP
 func (mr *MockStoreMockRecorder) ToggleGhostMode(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ToggleGhostMode", reflect.TypeOf((*MockStore)(nil).ToggleGhostMode), ctx, arg)
+}
+
+// TrackProfileView mocks base method.
+func (m *MockStore) TrackProfileView(ctx context.Context, arg db.TrackProfileViewParams) (db.ProfileView, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TrackProfileView", ctx, arg)
+	ret0, _ := ret[0].(db.ProfileView)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TrackProfileView indicates an expected call of TrackProfileView.
+func (mr *MockStoreMockRecorder) TrackProfileView(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrackProfileView", reflect.TypeOf((*MockStore)(nil).TrackProfileView), ctx, arg)
 }
 
 // UnblockUser mocks base method.

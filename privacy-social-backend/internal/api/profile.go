@@ -26,6 +26,8 @@ type ProfileResponse struct {
 	BannerUrl         string    `json:"banner_url"`
 	Theme             string    `json:"theme"`
 	ProfileVisibility string    `json:"profile_visibility"`
+	Email             string    `json:"email"`
+	IsGhostMode       bool      `json:"is_ghost_mode"`
 	IsPremium         bool      `json:"is_premium"`
 	ActivityStreak    int       `json:"activity_streak"`
 	StoryCount        int64     `json:"story_count"`
@@ -47,6 +49,8 @@ func mapProfileResponse(p db.GetUserProfileRow) ProfileResponse {
 		BannerUrl:         p.BannerUrl.String,
 		Theme:             p.Theme.String,
 		ProfileVisibility: p.ProfileVisibility.String,
+		Email:             p.Email.String,
+		IsGhostMode:       p.IsGhostMode,
 		IsPremium:         p.IsPremium.Bool,
 		ActivityStreak:    int(streak),
 		StoryCount:        p.StoryCount,
@@ -69,6 +73,22 @@ func (server *Server) getUserProfile(ctx *gin.Context) {
 			return
 		}
 		userID = user.ID
+	}
+
+	// Track profile view if user is authenticated
+	authPayload, exists := ctx.Get(authorizationPayloadKey)
+	if exists && authPayload != nil {
+		payload := authPayload.(*token.Payload)
+		// Don't track self-views
+		if payload.UserID != userID {
+			// Track asynchronously to not block response
+			go func() {
+				server.store.TrackProfileView(context.Background(), db.TrackProfileViewParams{
+					ViewerID:     payload.UserID,
+					ViewedUserID: userID,
+				})
+			}()
+		}
 	}
 
 	// Try Redis cache first
@@ -192,4 +212,37 @@ func (server *Server) updateProfile(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+// ProfileVisitorResponse represents a user who viewed the profile
+type ProfileVisitorResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	FullName  string    `json:"full_name"`
+	AvatarUrl string    `json:"avatar_url"`
+	ViewedAt  time.Time `json:"viewed_at"`
+}
+
+// getProfileVisitors returns users who viewed the authenticated user's profile in last 24h
+func (server *Server) getProfileVisitors(ctx *gin.Context) {
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	visitors, err := server.store.GetRecentProfileVisitors(ctx, authPayload.UserID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	response := make([]ProfileVisitorResponse, len(visitors))
+	for i, v := range visitors {
+		response[i] = ProfileVisitorResponse{
+			ID:        v.ID,
+			Username:  v.Username,
+			FullName:  v.FullName,
+			AvatarUrl: v.AvatarUrl.String,
+			ViewedAt:  v.ViewedAt,
+		}
+	}
+
+	ctx.JSON(http.StatusOK, response)
 }

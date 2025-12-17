@@ -191,8 +191,8 @@ func (server *Server) toggleGhostMode(ctx *gin.Context) {
 
 	payload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
 
-	// Call existing ToggleGhostMode query
-	_, err := server.store.ToggleGhostMode(ctx, db.ToggleGhostModeParams{
+	// Call existing ToggleGhostMode query - it returns the updated user
+	user, err := server.store.ToggleGhostMode(ctx, db.ToggleGhostModeParams{
 		ID:          payload.UserID,
 		IsGhostMode: req.Enabled,
 	})
@@ -201,11 +201,8 @@ func (server *Server) toggleGhostMode(ctx *gin.Context) {
 		return
 	}
 
-	status := "enabled"
-	if !req.Enabled {
-		status = "disabled"
-	}
-	ctx.JSON(http.StatusOK, gin.H{"message": "ghost mode " + status})
+	// Return the updated user object so frontend gets fresh data
+	ctx.JSON(http.StatusOK, newUserResponse(user))
 }
 
 func (server *Server) panicMode(ctx *gin.Context) {
