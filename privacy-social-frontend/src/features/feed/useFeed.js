@@ -47,7 +47,7 @@ export const useCreateStory = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (formData) => apiService.createStory(formData),
+        mutationFn: (storyData) => apiService.createStory(storyData),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['feed'] });
             queryClient.invalidateQueries({ queryKey: ['stories-map'] });

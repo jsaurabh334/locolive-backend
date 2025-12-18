@@ -31,24 +31,35 @@ const CreateStory = () => {
     };
 
     const handleSubmit = async () => {
-        if (!file || !location) return;
+        if (!file || !location) {
+            toast.error("Please select a file and allow location access");
+            return;
+        }
 
         try {
             setIsUploading(true);
             setUploadError(null);
+
             const formData = new FormData();
             formData.append('file', file);
+
             const uploadResponse = await apiService.uploadFile(formData);
             const mediaUrl = uploadResponse.data.url;
 
-            createStory({
+            if (!mediaUrl) {
+                throw new Error("Failed to get media URL from upload");
+            }
+
+            const storyData = {
                 media_url: mediaUrl,
                 media_type: file.type.startsWith('video/') ? 'video' : 'image',
-                latitude: location.lat,
-                longitude: location.lng,
+                latitude: parseFloat(location.lat),
+                longitude: parseFloat(location.lng),
                 caption: caption,
                 is_anonymous: false
-            }, {
+            };
+
+            createStory(storyData, {
                 onSuccess: () => {
                     queryClient.invalidateQueries({ queryKey: ['feed'] });
                     queryClient.invalidateQueries({ queryKey: ['map-clusters'] });
@@ -56,17 +67,17 @@ const CreateStory = () => {
                     navigate('/');
                 },
                 onError: (err) => {
+                    console.error("Story creation error:", err);
                     setUploadError("Failed to post story. Please try again.");
                     toast.error("Failed to post story.");
                     setIsUploading(false);
                 },
                 onSettled: () => {
-                    // Do not set isUploading(false) here on success to prevent flicker before nav
-                    if (uploadError) setIsUploading(false);
+                    // Only stop loading if we didn't succeed (success handles its own nav)
                 }
             });
         } catch (error) {
-            // console.error("Failed to create story:", error);
+            console.error("Upload error:", error);
             setUploadError("Failed to upload media. Please try again.");
             toast.error("Failed to upload media.");
             setIsUploading(false);
@@ -134,7 +145,7 @@ const CreateStory = () => {
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileChange}
-                    accept="image/*"
+                    accept="image/*,video/*"
                     className="hidden"
                 />
 
