@@ -108,16 +108,16 @@ const ChatSidebar = ({
                         return (
                             <motion.div
                                 key={conv.id}
-                                whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.05)' }}
+                                whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => handleUserSelect({ id: conv.id, username: conv.username, full_name: conv.full_name, avatar_url: conv.avatar_url })}
                                 className={cn(
                                     "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border relative group",
                                     selectedUser?.id === conv.id
-                                        ? "bg-primary-500/10 border-primary-500/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]"
+                                        ? "bg-primary-500/10 border-primary-500/30 shadow-[0_0_20px_rgba(59,130,246,0.15)] hover:bg-primary-500/20"
                                         : hasUnread
-                                            ? "bg-surface/40 border-primary-500/20 shadow-[0_0_10px_rgba(59,130,246,0.08)]"
-                                            : "border-transparent hover:border-white/10"
+                                            ? "bg-surface/40 border-primary-500/20 shadow-[0_0_10px_rgba(59,130,246,0.08)] hover:bg-surface/60"
+                                            : "border-transparent hover:border-white/10 hover:bg-white/5"
                                 )}
                             >
                                 <div className="relative">
