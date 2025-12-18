@@ -29,6 +29,7 @@ const MessageList = ({
     const tapTimeoutRef = useRef(null);
     const virtuosoRef = useRef(null);
     const prevMessagesLengthRef = useRef(0);
+    const [isAtBottom, setIsAtBottom] = React.useState(true);
 
     // Group consecutive identical system messages
     const groupedMessages = useMemo(() => {
@@ -80,19 +81,10 @@ const MessageList = ({
         return grouped;
     }, [messages]);
 
-    // Auto-scroll to bottom when new messages are added
+    // Auto-scroll behavior is now handled by the followOutput prop in Virtuoso.
+    // This is more robust as it triggers after Virtuoso has performed layout measurements.
     useEffect(() => {
-        if (groupedMessages && groupedMessages.length > prevMessagesLengthRef.current) {
-            // New message added, scroll to bottom
-            if (virtuosoRef.current) {
-                virtuosoRef.current.scrollToIndex({
-                    index: groupedMessages.length - 1,
-                    align: 'end',
-                    behavior: 'smooth'
-                });
-            }
-        }
-        prevMessagesLengthRef.current = groupedMessages?.length || 0;
+        prevMessagesLengthRef.current = groupedMessages.length;
     }, [groupedMessages]);
 
     // Calculate initial scroll position - scroll to first unread message or bottom
@@ -139,16 +131,26 @@ const MessageList = ({
         }, 300);
     };
 
+    const handleMediaLoad = () => {
+        if (isAtBottom && virtuosoRef.current) {
+            virtuosoRef.current.scrollToIndex({
+                index: groupedMessages.length - 1,
+                align: 'end',
+                behavior: 'smooth'
+            });
+        }
+    };
+
     return (
         <div
-            className="flex-1 overflow-hidden p-2 md:p-4 z-10"
+            className="flex-1 overflow-hidden z-10 overscroll-contain"
             onClick={handleDoubleTap}
-            style={{ userSelect: 'none' }}
+            style={{ userSelect: 'none', overscrollBehaviorY: 'contain' }}
         >
             {loadingMessages ? (
                 <div className="flex justify-center pt-20"><Loader /></div>
             ) : groupedMessages?.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-text-secondary opacity-50">
+                <div className="flex flex-col items-center justify-center h-full text-text-secondary opacity-50 p-6">
                     <span className="text-4xl mb-2">👋</span>
                     <p>Say hi to start the conversation!</p>
                 </div>
@@ -158,10 +160,18 @@ const MessageList = ({
                     style={{ height: '100%' }}
                     data={groupedMessages}
                     initialTopMostItemIndex={getInitialScrollIndex()}
-                    followOutput={false}
+                    followOutput={(atBottom) => {
+                        const lastMsg = groupedMessages[groupedMessages.length - 1];
+                        const isMe = lastMsg?.sender_id === currentUser.id || lastMsg?.sender_id === 'current-user';
+
+                        if (isMe) return 'smooth';
+                        return atBottom ? 'smooth' : false;
+                    }}
                     alignToBottom={true}
+                    atBottomStateChange={setIsAtBottom}
+                    increaseViewportBy={200}
                     components={{
-                        Footer: () => <div style={{ height: '20px' }} />
+                        Footer: () => <div style={{ height: '24px' }} />
                     }}
                     itemContent={(index, msg) => {
                         const isMe = msg.sender_id === currentUser.id;
@@ -169,26 +179,29 @@ const MessageList = ({
                         const showAvatar = !isMe && (index === 0 || groupedMessages[index - 1].sender_id !== msg.sender_id);
 
                         return (
-                            <MessageItem
-                                key={msg.id}
-                                msg={msg}
-                                isMe={isMe}
-                                showAvatar={showAvatar}
-                                selectedUser={selectedUser}
-                                isEditing={isEditing}
-                                editContent={editContent}
-                                setEditContent={setEditContent}
-                                onSaveEdit={onSaveEdit}
-                                onCancelEdit={onCancelEdit}
-                                onStartEdit={onStartEdit}
-                                onDelete={onDelete}
-                                onReaction={onReaction}
-                                onSaveMessage={onSaveMessage}
-                                menuOpen={menuOpen}
-                                setMenuOpen={setMenuOpen}
-                                reactionPicker={reactionPicker}
-                                setReactionPicker={setReactionPicker}
-                            />
+                            <div className="px-2 md:px-4 py-0.5">
+                                <MessageItem
+                                    key={msg.id}
+                                    msg={msg}
+                                    isMe={isMe}
+                                    showAvatar={showAvatar}
+                                    selectedUser={selectedUser}
+                                    isEditing={isEditing}
+                                    editContent={editContent}
+                                    setEditContent={setEditContent}
+                                    onSaveEdit={onSaveEdit}
+                                    onCancelEdit={onCancelEdit}
+                                    onStartEdit={onStartEdit}
+                                    onDelete={onDelete}
+                                    onReaction={onReaction}
+                                    onSaveMessage={onSaveMessage}
+                                    menuOpen={menuOpen}
+                                    setMenuOpen={setMenuOpen}
+                                    reactionPicker={reactionPicker}
+                                    setReactionPicker={setReactionPicker}
+                                    onMediaLoad={handleMediaLoad}
+                                />
+                            </div>
                         );
                     }}
                 />

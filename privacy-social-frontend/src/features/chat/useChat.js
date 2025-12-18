@@ -79,6 +79,7 @@ export const useMarkConversationRead = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['unreadMessageCount'] });
             queryClient.invalidateQueries({ queryKey: ['messages'] });
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
         },
     });
 };

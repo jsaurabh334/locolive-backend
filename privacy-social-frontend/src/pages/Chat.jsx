@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -13,6 +14,7 @@ import apiClient from '../api/client'; // Import queryFn helper if needed for di
 
 const Chat = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const location = useLocation();
     const [searchParams] = useSearchParams();
     const { user: currentUser } = useAuth();
@@ -101,37 +103,46 @@ const Chat = () => {
         try {
             const data = JSON.parse(lastMessage.data);
 
-            // Validate event is for current chat
+            // Global Updates (Conversations List)
+            // Always refetch conversations for ANY new message to update sidebar (unread count/order)
+            if (data.type === 'new_message') {
+                refetchConversations();
+            }
+
+            // Validate event is for current chat (Local Message List)
             const isRelevant =
                 (data.sender_id === activeConversationRef.current) ||
                 (data.receiver_id === activeConversationRef.current) ||
                 (data.user_id === activeConversationRef.current) || // For typing events sometimes
                 (activeConversationRef.current && (data.sender_id === currentUser.id && data.receiver_id === activeConversationRef.current));
 
-            if (!isRelevant && data.type !== 'message_read') return; // message_read might be global? handled below
+            if (!isRelevant && data.type !== 'message_read') return;
 
-            if (data.type === 'new_message') {
+            if (data.type === 'new_message' && isRelevant) {
                 setLocalMessages(prev => {
                     // Deduplicate
                     if (prev.some(m => m.id === data.id)) return prev;
                     return [...prev, data];
                 });
-                refetchConversations();
 
                 // Mark read if we are looking at this chat and it's from them
                 if (data.sender_id === activeConversationRef.current) {
                     markRead.mutate(activeConversationRef.current);
                 }
 
-            } else if (data.type === 'message_read' && data.reader_id === activeConversationRef.current) {
-                // Targeted update: Only update specific message or all if logic dictates
-                // The previous logic updated ALL unread, which might be overkill but acceptable if `message_id` is missing?
-                // If `message_id` is present, update specific.
-                if (data.message_id) {
-                    setLocalMessages(prev => prev.map(msg => msg.id === data.message_id ? { ...msg, read_at: new Date().toISOString() } : msg));
-                } else {
-                    // Fallback: update all my messages to this user? (Assuming bulk read)
-                    // Keeping specific behavior for now if backend sends ID
+            } else if (data.type === 'message_read') {
+                // If I read it elsewhere, update global list too
+                if (data.reader_id === currentUser.id) {
+                    refetchConversations();
+                }
+
+                if (data.reader_id === activeConversationRef.current) {
+                    // Targeted update: Only update specific message or all if logic dictates
+                    if (data.message_id) {
+                        setLocalMessages(prev => prev.map(msg => msg.id === data.message_id ? { ...msg, read_at: new Date().toISOString() } : msg));
+                    } else {
+                        // Fallback: update all my messages to this user? (Assuming bulk read)
+                    }
                 }
 
             } else if (data.type === 'typing' && data.sender_id === activeConversationRef.current) {
@@ -184,6 +195,12 @@ const Chat = () => {
     }, [selectedUser?.id, messages]); // Depend on messages to check unread status
 
     const handleUserSelect = (user) => {
+        // Optimistic update for unread count
+        queryClient.setQueryData(['conversations'], (old) => {
+            if (!old) return old;
+            return old.map(c => c.id === user.id ? { ...c, unread_count: 0 } : c);
+        });
+
         setSelectedUser(user);
         // Persist in URL for reliability
         navigate(`/messages?userId=${user.id}`, { state: { selectedUser: user }, replace: true });

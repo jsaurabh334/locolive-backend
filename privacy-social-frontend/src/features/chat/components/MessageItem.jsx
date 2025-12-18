@@ -26,7 +26,8 @@ const MessageItem = ({
     setMenuOpen,
     reactionPicker,
     setReactionPicker,
-    onStartEdit
+    onStartEdit,
+    onMediaLoad // New prop
 }) => {
     const navigate = useNavigate();
 
@@ -232,6 +233,7 @@ const MessageItem = ({
                                     src={msg.media_url || msg.content}
                                     alt="Shared image"
                                     className="rounded-xl max-w-[240px] max-h-60 object-cover shadow-sm border border-white/10"
+                                    onLoad={onMediaLoad}
                                     onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block' }}
                                 />
                             )}
@@ -241,6 +243,7 @@ const MessageItem = ({
                                     src={msg.media_url}
                                     controls
                                     className="rounded-xl max-w-[240px] max-h-60 shadow-sm border border-white/10 bg-black"
+                                    onLoadedData={onMediaLoad}
                                 />
                             )}
 
