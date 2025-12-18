@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -37,8 +38,9 @@ func (server *Server) shareStory(ctx *gin.Context) {
 		return
 	}
 
-	// Create message for each user
-	shareText := "📸 Shared a story with you: " + story.MediaUrl
+	// Create message with story link in content
+	// Use relative path for internal deep linking in frontend
+	shareText := fmt.Sprintf("📸 Shared a story with you: /view-story/%s", story.ID)
 	successCount := 0
 
 	for _, userIDStr := range req.UserIDs {

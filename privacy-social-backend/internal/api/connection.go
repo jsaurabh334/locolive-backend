@@ -99,7 +99,8 @@ func (server *Server) sendConnectionRequest(ctx *gin.Context) {
 		if pqErr, ok := err.(*pq.Error); ok {
 			switch pqErr.Code.Name() {
 			case "unique_violation":
-				ctx.JSON(http.StatusConflict, gin.H{"error": "connection request already exists"})
+				// Idempotent success: if already exists, treat as success
+				ctx.JSON(http.StatusOK, gin.H{"message": "connection request already sent"})
 				return
 			case "foreign_key_violation":
 				ctx.JSON(http.StatusNotFound, gin.H{"error": "target user not found"})

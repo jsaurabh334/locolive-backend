@@ -54,6 +54,7 @@ type Querier interface {
 	DeleteStoryMentions(ctx context.Context, storyID uuid.UUID) error
 	DeleteStoryReaction(ctx context.Context, arg DeleteStoryReactionParams) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
+	// Block Logic
 	FindPotentialCrossings(ctx context.Context, arg FindPotentialCrossingsParams) ([]FindPotentialCrossingsRow, error)
 	GetBlockedUsers(ctx context.Context, blockerID uuid.UUID) ([]GetBlockedUsersRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
@@ -94,6 +95,7 @@ type Querier interface {
 	GetUserEngagementStats(ctx context.Context, userID uuid.UUID) (GetUserEngagementStatsRow, error)
 	GetUserMentions(ctx context.Context, arg GetUserMentionsParams) ([]GetUserMentionsRow, error)
 	GetUserProfile(ctx context.Context, id uuid.UUID) (GetUserProfileRow, error)
+	HasValidStory(ctx context.Context, userID uuid.UUID) (bool, error)
 	IsUserBlocked(ctx context.Context, arg IsUserBlockedParams) (bool, error)
 	// Admin: List all stories
 	ListAllStories(ctx context.Context, arg ListAllStoriesParams) ([]ListAllStoriesRow, error)
@@ -112,6 +114,7 @@ type Querier interface {
 	MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) (Notification, error)
 	// Admin: Resolve report
 	ResolveReport(ctx context.Context, id uuid.UUID) (Report, error)
+	SaveMessage(ctx context.Context, id uuid.UUID) (Message, error)
 	SearchUsers(ctx context.Context, query string) ([]SearchUsersRow, error)
 	// Privacy Features
 	ToggleGhostMode(ctx context.Context, arg ToggleGhostModeParams) (User, error)

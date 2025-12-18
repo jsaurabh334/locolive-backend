@@ -13,14 +13,20 @@ const Avatar = ({ src, alt, size = 'md', className = '', status }) => {
         offline: "bg-neutral-500",
     };
 
+    // Generate a consistent random avatar based on the user's name
+    const getDefaultAvatar = () => {
+        const seed = alt || 'User';
+        return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
+    };
+
     return (
         <div className={`relative inline-block ${className}`}>
             <div className={`${sizes[size]} rounded-full overflow-hidden border border-border bg-neutral-800`}>
                 <img
-                    src={src || `https://ui-avatars.com/api/?name=${alt || 'User'}&background=random`}
+                    src={src || getDefaultAvatar()}
                     alt={alt || "Avatar"}
                     className="w-full h-full object-cover"
-                    onError={(e) => { e.target.src = `https://ui-avatars.com/api/?name=${alt || 'User'}&background=random`; }}
+                    onError={(e) => { e.target.src = getDefaultAvatar(); }}
                 />
             </div>
             {status && (

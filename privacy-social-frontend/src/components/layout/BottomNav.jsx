@@ -47,6 +47,15 @@ const BottomNav = () => {
             )
         },
         {
+            to: '/crossings',
+            label: 'Crossings',
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                </svg>
+            )
+        },
+        {
             to: '/connections',
             label: 'Friends',
             icon: (
@@ -68,7 +77,7 @@ const BottomNav = () => {
 
     return (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/80 dark:bg-black/30 backdrop-blur-xl border-t border-white/20 dark:border-white/10 z-50 pb-safe transition-all duration-300">
-            <div className="grid grid-cols-5 h-full relative">
+            <div className="grid grid-cols-6 h-full relative">
                 {/* Active Indicator Background - Optional enhancement could go here */}
                 {navItems.map((item) => (
                     <BottomNavItem

@@ -6,29 +6,30 @@ export const useGeolocation = (options = {}) => {
     const [permissionStatus, setPermissionStatus] = useState('prompt');
     const watchId = useRef(null);
 
+    // Track if we are currently trying high accuracy
+    const [isHighAccuracy, setIsHighAccuracy] = useState(true);
+
     const defaultOptions = {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
+        enableHighAccuracy: isHighAccuracy,
+        timeout: isHighAccuracy ? 5000 : 10000,
+        maximumAge: 60000,
         ...options
     };
 
     useEffect(() => {
         if (!navigator.geolocation) {
-            // Keep this async or schedule it to allow render to complete
-            const timeout = setTimeout(() => {
-                setError(new Error('Geolocation is not supported by your browser'));
-            }, 0);
-            return () => clearTimeout(timeout);
+            setError(new Error('Geolocation is not supported by your browser'));
+            return;
         }
 
+        // Check permissions status
         navigator.permissions?.query({ name: 'geolocation' })
             .then((status) => {
                 setPermissionStatus(status.state);
                 status.onchange = () => setPermissionStatus(status.state);
             })
             .catch(() => {
-                // Safari doesn't support permissions API for geolocation fully in all versions
+                // Ignore permission API errors (e.g. Safari)
             });
 
         const handleSuccess = (pos) => {
@@ -44,9 +45,20 @@ export const useGeolocation = (options = {}) => {
         };
 
         const handleError = (err) => {
+            // console.warn(`Geolocation error (HighAccuracy: ${isHighAccuracy}):`, err.message);
+
+            // If timeout (code 3) and we were using high accuracy, try falling back to low accuracy
+            if (err.code === 3 && isHighAccuracy) {
+                // console.log('Falling back to low accuracy geolocation...');
+                setIsHighAccuracy(false); // This will trigger re-effect
+                return;
+            }
+
+            // Otherwise set error
             setError(err);
         };
 
+        // Start watching
         watchId.current = navigator.geolocation.watchPosition(
             handleSuccess,
             handleError,
@@ -58,7 +70,7 @@ export const useGeolocation = (options = {}) => {
                 navigator.geolocation.clearWatch(watchId.current);
             }
         };
-    }, []);
+    }, [isHighAccuracy]); // Re-run if accuracy mode changes
 
     return { location, error, permissionStatus };
 };

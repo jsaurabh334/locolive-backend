@@ -87,5 +87,13 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 		log.Error().Err(err).Msg("Failed to update user activity on location ping")
 	}
 
+	// [NEW] Trigger Redis Geo Crossing Detection
+	// We run this asynchronously to not block the response?
+	// Or synchronously since it's fast (Redis)?
+	// Let's do it synchronously to ensure it works, Redis is fast.
+	if err := server.location.UpdateUserLocation(ctx, authPayload.UserID, req.Latitude, req.Longitude); err != nil {
+		log.Error().Err(err).Msg("Failed to update redis location service")
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "updated"})
 }

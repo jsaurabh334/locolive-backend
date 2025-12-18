@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -24,4 +25,20 @@ func parseUUIDParam(ctx *gin.Context, value string, paramName string) (uuid.UUID
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// toNullString converts a string to a sql.NullString
+func toNullString(s string) sql.NullString {
+	return sql.NullString{
+		String: s,
+		Valid:  s != "",
+	}
+}
+
+// nullStringToStrPtr converts a sql.NullString to a *string
+func nullStringToStrPtr(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
 }

@@ -10,6 +10,7 @@ import Button from '../components/ui/Button';
 import Loader from '../components/ui/Loader';
 import ErrorState from '../components/ui/ErrorState';
 import ReportModal from '../components/ReportModal';
+import SkeletonLoader from '../components/ui/SkeletonLoader';
 
 const Profile = () => {
     const { id } = useParams();
@@ -30,12 +31,12 @@ const Profile = () => {
 
     // Fetch activity status
     const { data: activityStatus } = useQuery({
-        queryKey: ['activity-status'],
+        queryKey: ['activity-status', user?.id], // Scoped to user ID
         queryFn: async () => {
-            const res = await apiClient.getActivityStatus();
+            const res = await apiClient.getActivityStatus(user?.id);
             return res.data;
         },
-        enabled: isOwnProfile
+        enabled: !!user?.id
     });
 
     // Fetch profile visitors
@@ -57,9 +58,16 @@ const Profile = () => {
 
     const connectionStatus = useMemo(() => {
         if (isOwnProfile || !profile) return null;
+
+        // Check optimistically updated lists first
         if (connections?.some(c => c.id === profile.id)) return 'connected';
         if (pendingRequests?.some(r => r.requester_id === profile.id)) return 'incoming';
         if (sentRequests?.some(r => r.target_id === profile.id)) return 'sent';
+
+        // Check profile's own status if lists haven't synced yet (fallback)
+        if (profile.connection_status === 'pending') return 'sent';
+        if (profile.connection_status === 'connected') return 'connected';
+
         return 'none';
     }, [connections, pendingRequests, sentRequests, profile, isOwnProfile]);
 
@@ -79,7 +87,7 @@ const Profile = () => {
     const boostMutation = useMutation({
         mutationFn: () => apiClient.boostProfile(),
         onSuccess: () => {
-            queryClient.invalidateQueries(['my-profile']);
+            queryClient.invalidateQueries({ queryKey: ['profile'] });
             alert('Profile boosted! You\'ll appear higher in discovery for the next 24 hours.');
         },
         onError: (err) => {
@@ -89,8 +97,18 @@ const Profile = () => {
 
     if (isLoading) {
         return (
-            <div className="h-full flex items-center justify-center min-h-[50vh]">
-                <Loader size="lg" />
+            <div className="min-h-screen bg-gradient-to-br from-background via-surface/30 to-background pb-20">
+                <div className="h-48 bg-gradient-to-r from-primary-600 via-purple-600 to-secondary-600 relative shadow-2xl">
+                    <div className="absolute inset-0 bg-black/10"></div>
+                </div>
+                <div className="max-w-4xl mx-auto px-6 -mt-24 relative z-10 space-y-6">
+                    <SkeletonLoader variant="profile" />
+                    <div className="grid grid-cols-3 gap-4">
+                        <SkeletonLoader variant="card" />
+                        <SkeletonLoader variant="card" />
+                        <SkeletonLoader variant="card" />
+                    </div>
+                </div>
             </div>
         );
     }
@@ -121,31 +139,55 @@ const Profile = () => {
             {/* Profile Content */}
             <div className="max-w-4xl mx-auto px-6 -mt-24 relative z-10">
                 {/* Avatar & Name Card */}
-                <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 mb-6">
+                <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 mb-6 group">
                     <div className="flex flex-col items-center">
-                        {/* Avatar with Gradient Ring */}
+                        {/* Avatar with Animated Pulse Ring & Glow */}
                         <div className="relative mb-6">
-                            <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-purple-500 rounded-full blur-xl opacity-50"></div>
-                            <div className="relative p-1.5 rounded-full bg-gradient-to-r from-primary-500 to-purple-500">
-                                <div className="w-32 h-32 rounded-full bg-background flex items-center justify-center overflow-hidden">
+                            {/* Outer Pulse Ring - Online Status (Public if Story Active) */}
+                            {activityStatus?.visibility_status === 'active' && (
+                                <div className="absolute inset-0 rounded-full">
+                                    <div className="absolute inset-0 rounded-full bg-green-500/30 animate-ping"></div>
+                                    <div className="absolute inset-0 rounded-full bg-green-500/20 animate-pulse"></div>
+                                </div>
+                            )}
+
+                            {/* Glowing Background Blur */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-primary-500 via-purple-500 to-pink-500 rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition-opacity duration-500 animate-pulse"></div>
+
+                            {/* Gradient Ring with Depth */}
+                            <div className="relative p-1.5 rounded-full bg-gradient-to-r from-primary-500 via-purple-500 to-pink-500 shadow-2xl group-hover:shadow-primary-500/50 transition-all duration-300 group-hover:scale-105">
+                                <div className="w-32 h-32 rounded-full bg-background flex items-center justify-center overflow-hidden ring-4 ring-background/50 group-hover:ring-primary-500/30 transition-all duration-300">
                                     {userDisplay.avatar_url ? (
-                                        <img src={userDisplay.avatar_url} alt={userDisplay.username} className="w-full h-full object-cover" />
+                                        <img
+                                            src={userDisplay.avatar_url}
+                                            alt={userDisplay.username}
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                        />
                                     ) : (
-                                        <span className="text-5xl font-bold text-primary-500">
+                                        <span className="text-5xl font-bold text-primary-500 group-hover:scale-110 transition-transform duration-300">
                                             {userDisplay.username?.[0]?.toUpperCase() || '?'}
                                         </span>
                                     )}
                                 </div>
+
+                                {/* Online Status Indicator (Public if Story Active) */}
+                                {activityStatus?.visibility_status === 'active' && (
+                                    <div className="absolute bottom-2 right-2 w-6 h-6 bg-green-500 rounded-full border-4 border-background shadow-lg">
+                                        <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        {/* Name & Username */}
-                        <h1 className="text-3xl font-bold text-text-primary mb-2">{userDisplay.full_name}</h1>
-                        <p className="text-text-secondary mb-4">@{userDisplay.username}</p>
+                        {/* Name & Username with Premium Typography Hierarchy */}
+                        <h1 className="text-4xl font-bold text-text-primary mb-1 group-hover:text-primary-500 transition-colors duration-300 tracking-tight">
+                            {userDisplay.full_name}
+                        </h1>
+                        <p className="text-sm text-text-tertiary mb-6 font-normal opacity-70">@{userDisplay.username}</p>
 
-                        {/* Bio */}
+                        {/* Bio with Lighter, Italic Styling */}
                         {userDisplay.bio && (
-                            <p className="text-center text-text-secondary italic max-w-md">
+                            <p className="text-center text-text-secondary/80 italic font-light text-sm leading-relaxed max-w-md px-6 py-3 bg-surface/30 rounded-2xl border border-border/30 backdrop-blur-sm">
                                 "{userDisplay.bio}"
                             </p>
                         )}
@@ -155,7 +197,7 @@ const Profile = () => {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-3 gap-4 mb-6">
                     {/* Stories Stat */}
-                    <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 text-center group">
+                    <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 text-center group cursor-pointer">
                         <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                             <span className="text-2xl">📸</span>
                         </div>
@@ -164,7 +206,10 @@ const Profile = () => {
                     </div>
 
                     {/* Connections Stat */}
-                    <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 text-center group">
+                    <div
+                        onClick={() => isOwnProfile && navigate('/connections')}
+                        className={`bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 text-center group ${isOwnProfile ? 'cursor-pointer' : 'cursor-default'}`}
+                    >
                         <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                             <span className="text-2xl">👥</span>
                         </div>
@@ -173,7 +218,7 @@ const Profile = () => {
                     </div>
 
                     {/* Activity/Status Stat */}
-                    <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 text-center group">
+                    <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 text-center group cursor-pointer">
                         <div className={`w-12 h-12 mx-auto mb-3 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform ${activityStatus?.visibility_status === 'active' ? 'bg-gradient-to-br from-green-500 to-emerald-500' :
                             activityStatus?.visibility_status === 'fading' ? 'bg-gradient-to-br from-yellow-500 to-orange-500' :
                                 'bg-gradient-to-br from-gray-500 to-slate-500'
@@ -184,7 +229,7 @@ const Profile = () => {
                             activityStatus?.visibility_status === 'fading' ? 'text-yellow-500' :
                                 'text-gray-500'
                             }`}>
-                            {isOwnProfile ? (activityStatus?.visibility_status || 'Active') : 'Active'}
+                            {activityStatus?.visibility_status ? activityStatus.visibility_status.charAt(0).toUpperCase() + activityStatus.visibility_status.slice(1) : 'Hidden'}
                         </span>
                         <span className="text-xs text-text-tertiary uppercase tracking-wide">Status</span>
                     </div>
@@ -195,9 +240,10 @@ const Profile = () => {
                     <div className="space-y-4">
                         <button
                             onClick={() => setIsEditing(true)}
-                            className="w-full px-6 py-3 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                            className="group w-full px-6 py-3 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                         >
-                            ✏️ Edit Profile
+                            <span className="text-lg transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110">✏️</span>
+                            <span>Edit Profile</span>
                         </button>
 
                         {profile?.is_premium && (
@@ -223,9 +269,9 @@ const Profile = () => {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    {visitors.slice(0, 5).map(visitor => (
+                                    {visitors.slice(0, 5).map((visitor, index) => (
                                         <div
-                                            key={visitor.id}
+                                            key={`visitor-${visitor.id}-${index}`}
                                             className="flex items-center gap-3 p-3 rounded-2xl hover:bg-surface-hover cursor-pointer transition-all"
                                             onClick={() => navigate(`/profile/${visitor.id}`)}
                                         >

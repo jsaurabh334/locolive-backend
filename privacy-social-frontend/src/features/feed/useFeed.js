@@ -9,7 +9,7 @@ export const useFeed = () => {
         queryKey: ['feed', location?.lat, location?.lng],
         queryFn: async () => {
             const response = await apiService.getFeed(1, location.lat, location.lng);
-            return response.data?.stories || [];
+            return response.data; // Return full object { stories, count, message, search_radius }
         },
         enabled: !!(location?.lat && location?.lng),
         staleTime: 1000 * 60 * 1,

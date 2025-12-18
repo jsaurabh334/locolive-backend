@@ -9,6 +9,7 @@ import { AuthProvider } from './context/AuthContext';
 import { LocationProvider } from './context/LocationContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { WebSocketProvider } from './context/WebSocketContext';
+import { ToastProvider } from './context/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/layout/Layout';
 
@@ -71,40 +72,43 @@ function App() {
         }}
       >
         <AuthProvider>
-          <WebSocketProvider>
-            <ThemeProvider>
-              <LocationProvider>
-                <Suspense fallback={<PageLoader />}>
-                  <Routes>
-                    {/* Public Routes */}
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/register" element={<Register />} />
+          <ToastProvider>
+            <WebSocketProvider>
+              <ThemeProvider>
+                <LocationProvider>
+                  <Suspense fallback={<PageLoader />}>
+                    <Routes>
+                      {/* Public Routes */}
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/register" element={<Register />} />
 
-                    {/* Protected Routes */}
-                    <Route element={<ProtectedRoute />}>
-                      <Route element={<Layout />}>
-                        <Route path="/" element={<Home />} />
-                        <Route path="/create-story" element={<CreateStory />} />
-                        <Route path="/view-story" element={<ViewStory />} />
-                        <Route path="/profile" element={<Profile />} />
-                        <Route path="/profile/:id" element={<Profile />} />
-                        <Route path="/connections" element={<Connections />} />
-                        <Route path="/explore" element={<Explore />} />
-                        <Route path="/map" element={<StoryMap />} />
-                        <Route path="/messages" element={<Chat />} />
-                        <Route path="/chat" element={<Chat />} />
-                        <Route path="/crossings" element={<Crossings />} />
-                        <Route path="/settings" element={<Settings />} />
+                      {/* Protected Routes */}
+                      <Route element={<ProtectedRoute />}>
+                        <Route element={<Layout />}>
+                          <Route path="/" element={<Home />} />
+                          <Route path="/create-story" element={<CreateStory />} />
+                          <Route path="/view-story" element={<ViewStory />} />
+                          <Route path="/view-story/:id" element={<ViewStory />} />
+                          <Route path="/profile" element={<Profile />} />
+                          <Route path="/profile/:id" element={<Profile />} />
+                          <Route path="/connections" element={<Connections />} />
+                          <Route path="/explore" element={<Explore />} />
+                          <Route path="/map" element={<StoryMap />} />
+                          <Route path="/messages" element={<Chat />} />
+                          <Route path="/chat" element={<Chat />} />
+                          <Route path="/crossings" element={<Crossings />} />
+                          <Route path="/settings" element={<Settings />} />
+                        </Route>
                       </Route>
-                    </Route>
 
-                    {/* Fallback */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Suspense>
-              </LocationProvider>
-            </ThemeProvider>
-          </WebSocketProvider>
+                      {/* Fallback */}
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                  </Suspense>
+                </LocationProvider>
+              </ThemeProvider>
+            </WebSocketProvider>
+          </ToastProvider>
         </AuthProvider>
         <ReactQueryDevtools initialIsOpen={false} />
       </PersistQueryClientProvider>

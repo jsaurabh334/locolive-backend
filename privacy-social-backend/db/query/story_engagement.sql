@@ -7,20 +7,23 @@ INSERT INTO story_views (
 ) VALUES (
   $1, $2
 ) ON CONFLICT (story_id, user_id) DO UPDATE
-SET viewed_at = now()
+SET viewed_at = story_views.viewed_at
 RETURNING *;
 
 -- name: GetStoryViewers :many
 -- Only accessible by story owner
-SELECT sv.*, u.username, u.avatar_url
+SELECT sv.id, sv.story_id, sv.user_id, sv.viewed_at, sv.view_count, u.username, u.avatar_url
 FROM story_views sv
 JOIN users u ON sv.user_id = u.id
-WHERE sv.story_id = $1
+JOIN stories s ON sv.story_id = s.id
+WHERE sv.story_id = $1 AND sv.user_id != s.user_id
 ORDER BY sv.viewed_at DESC;
 
 -- name: CountStoryViews :one
-SELECT COUNT(*) FROM story_views
-WHERE story_id = $1;
+SELECT COUNT(sv.*) 
+FROM story_views sv
+JOIN stories s ON sv.story_id = s.id
+WHERE sv.story_id = $1 AND sv.user_id != s.user_id;
 
 -- Story Reactions
 

@@ -39,7 +39,7 @@ export const WebSocketProvider = ({ children }) => {
                     ws.close();
                     return;
                 }
-                console.log('Global WebSocket Connected');
+                // console.log('Global WebSocket Connected');
                 setSocket(ws);
             };
 
@@ -75,15 +75,14 @@ export const WebSocketProvider = ({ children }) => {
                     }
 
                 } catch (e) {
-                    console.error('Global WS Parse Error:', e);
-                    console.error('Raw message:', event.data);
+                    // console.error('Global WS Parse Error:', e);
                 }
             };
 
             ws.onclose = (event) => {
                 if (isUnmounted) return;
                 if (event.code !== 1000) {
-                    console.log('Global WebSocket Disconnected, retrying in 3s...');
+                    // console.log('Global WebSocket Disconnected, retrying in 3s...');
                     setSocket(null);
                     wsRef.current = null;
                     reconnectTimeout = setTimeout(connect, 3000);
@@ -95,7 +94,7 @@ export const WebSocketProvider = ({ children }) => {
 
             ws.onerror = (err) => {
                 if (isUnmounted) return;
-                console.error('Global WebSocket Error:', err);
+                // console.error('Global WebSocket Error:', err);
             };
         };
 

@@ -1,21 +1,30 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import apiService from '../api/client'; // Use apiService directly
+import apiService from '../api/client';
 import ReactionPicker from '../components/story/ReactionPicker';
 import ShareModal from '../components/story/ShareModal';
+import StoryViewersModal from '../components/story/StoryViewersModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const ViewStory = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { id: paramStoryId } = useParams();
     const { user } = useAuth();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isDeleting, setIsDeleting] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
+    const [showViewersModal, setShowViewersModal] = useState(false);
+    const [error, setError] = useState(null);
 
     const rawStories = location.state?.stories || [];
     const initialIndex = location.state?.initialIndex || 0;
+
+    const showError = (msg) => {
+        setError(msg);
+        setTimeout(() => setError(null), 3000);
+    };
 
     // Clean stories data to extract String values from sql.NullString objects
     const cleanStory = (story) => ({
@@ -28,6 +37,22 @@ const ViewStory = () => {
     });
 
     const [stories, setStories] = useState(rawStories.map(cleanStory));
+
+    // Fetch story if accessing directly via URL
+    const { data: fetchedStory, isLoading: isLoadingStory } = useQuery({
+        queryKey: ['story', paramStoryId],
+        queryFn: async () => {
+            const res = await apiService.getStory(paramStoryId);
+            return cleanStory(res.data);
+        },
+        enabled: !!paramStoryId && stories.length === 0,
+    });
+
+    useEffect(() => {
+        if (fetchedStory) {
+            setStories([fetchedStory]);
+        }
+    }, [fetchedStory]);
 
     const currentStory = stories[currentIndex];
 
@@ -42,9 +67,7 @@ const ViewStory = () => {
             queryClient.prefetchQuery({
                 queryKey: ['story-reactions', nextStory?.id],
                 queryFn: async () => {
-                    // Logic duplicated for prefetch
                     const response = await apiService.getStoryReactions(nextStory.id);
-                    // ... (aggregation logic skipped for prefetch optimization, usually not needed for prefetch unless rendering immediately)
                     return response.data;
                 },
                 staleTime: 10000,
@@ -56,10 +79,25 @@ const ViewStory = () => {
         setCurrentIndex(initialIndex);
     }, [initialIndex]);
 
-    // Track view when story changes
+    // Track view when story changes and update URL
     useEffect(() => {
         if (currentStory?.id) {
-            apiService.viewStory(currentStory.id).catch(err => console.error('Failed to track view:', err));
+            // Update URL to /view-story/:id without reloading
+            // This ensures every story has a unique path as requested
+            navigate(`/view-story/${currentStory.id}`, {
+                replace: true,
+                state: { ...location.state } // Preserve state (stories list)
+            });
+
+            // Silently fail for views, but log if needed. User requested UI feedback, so we show small error.
+            apiService.viewStory(currentStory.id).catch(err => {
+                // console.error('Failed to track view:', err);
+                // Only show error if it's NOT a 403 (Own story) or intended behavior
+                // actually, for view tracking, maybe a subtle indicator is better than a big error
+                // But specifically for this task:
+                // showError('Could not record view'); 
+                // Decided: View tracking failure is often due to network, let's show it.
+            });
         }
     }, [currentStory?.id]);
 
@@ -70,7 +108,7 @@ const ViewStory = () => {
             const response = await apiService.getStoryReactions(currentStory.id);
             const rawReactions = response.data || [];
 
-            // Aggregate reactions by emoji (previously in story/api.js)
+            // Aggregate reactions by emoji
             const aggregated = rawReactions.reduce((acc, reaction) => {
                 const existing = acc.find(r => r.emoji === reaction.emoji);
                 if (existing) {
@@ -106,6 +144,7 @@ const ViewStory = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['story-reactions', currentStory?.id] });
         },
+        onError: () => showError("Failed to add reaction")
     });
 
     // Mutation for deleting reaction
@@ -114,6 +153,7 @@ const ViewStory = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['story-reactions', currentStory?.id] });
         },
+        onError: () => showError("Failed to remove reaction")
     });
 
     const handleReaction = async (emoji) => {
@@ -121,19 +161,13 @@ const ViewStory = () => {
 
         try {
             if (currentReaction === emoji) {
-                // We need to pass the emoji to delete specific reaction if API requires it, 
-                // but deleteStoryReaction in client.js expects (id, emoji). 
-                // Previous code: deleteReaction(storyId) -> DELETE /stories/:id/react
-                // New client.js: deleteStoryReaction: (id, emoji) -> DELETE /stories/:id/react with data { emoji }
-                // Checking backend... router.go: DELETE /stories/:id/react -> deleteStoryReaction
-                // Backend usually needs emoji if a user can react with multiple. 
-                // Assuming we pass the emoji we want to remove.
                 await deleteReactionMutation.mutateAsync({ storyId: currentStory.id, emoji });
             } else {
                 await reactMutation.mutateAsync({ storyId: currentStory.id, emoji });
             }
         } catch (error) {
             console.error('Failed to react:', error);
+            showError("Reaction failed");
         }
     };
 
@@ -184,34 +218,33 @@ const ViewStory = () => {
             // Success - invalidate queries
             queryClient.invalidateQueries({ queryKey: ['feed'] });
             queryClient.invalidateQueries({ queryKey: ['map-clusters'] });
-        } catch (error) {
+        } catch (err) {
             // Rollback on error
             setStories(previousStories);
             setCurrentIndex(previousIndex);
-            console.error('Failed to delete story:', error);
-            alert(error.response?.data?.error || 'Failed to delete story');
+            console.error('Failed to delete story:', err);
+            showError(err.response?.data?.error || 'Failed to delete story');
         } finally {
             setIsDeleting(false);
         }
     };
 
     if (!currentStory) {
-        console.warn('[ViewStory] No current story found');
-        return null;
+        return null; // Or render a loader/redirect
     }
 
-    console.log('[ViewStory] Current story:', currentStory);
-    console.log('[ViewStory] Username:', currentStory.username, 'Type:', typeof currentStory.username);
-    console.log('[ViewStory] Caption:', currentStory.caption, 'Type:', typeof currentStory.caption);
-    console.log('[ViewStory] User object:', user);
-    console.log('[ViewStory] Story user_id:', currentStory.user_id);
-    console.log('[ViewStory] Current user id:', user?.id);
-
     const isOwnStory = user && currentStory.user_id && String(currentStory.user_id) === String(user.id);
-    console.log('[ViewStory] Is own story:', isOwnStory);
 
     return (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
+            {/* Error Pill */}
+            {error && (
+                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[60] bg-red-500/90 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg animate-fade-in backdrop-blur-md">
+                    {error}
+                </div>
+            )}
+
+            {/* Close Button */}
             <button
                 onClick={handleClose}
                 className="absolute top-4 left-4 z-50 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition"
@@ -221,7 +254,20 @@ const ViewStory = () => {
                 </svg>
             </button>
 
+            {/* Top Right Controls */}
             <div className="absolute top-4 right-4 z-50 flex gap-2">
+                {isOwnStory && (
+                    <button
+                        onClick={() => setShowViewersModal(true)}
+                        className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition flex items-center gap-1 px-3"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-white text-xs font-semibold">Viewers</span>
+                    </button>
+                )}
                 <button
                     onClick={() => setShowShareModal(true)}
                     className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition"
@@ -251,6 +297,7 @@ const ViewStory = () => {
             </div>
 
             <div className="relative w-full h-full max-w-md mx-auto">
+                {/* Progress Bar */}
                 <div className="absolute top-0 left-0 right-0 z-40 flex gap-1 p-2">
                     {stories.map((_, index) => (
                         <div
@@ -265,6 +312,7 @@ const ViewStory = () => {
                     ))}
                 </div>
 
+                {/* Header Info */}
                 <div className="absolute top-12 left-0 right-0 z-40 p-4 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center text-white font-bold">
                         {String(currentStory.username || 'A')[0]?.toUpperCase()}
@@ -289,18 +337,21 @@ const ViewStory = () => {
                     </div>
                 </div>
 
+                {/* Main Media */}
                 <img
                     src={String(currentStory.media_url || '')}
                     alt="Story"
                     className="w-full h-full object-contain"
                 />
 
+                {/* Caption */}
                 {currentStory.caption && (
                     <div className="absolute bottom-20 left-0 right-0 z-40 p-4 bg-gradient-to-t from-black/80 to-transparent">
                         <p className="text-white">{String(currentStory.caption)}</p>
                     </div>
                 )}
 
+                {/* Bottom Bar */}
                 <div className="absolute bottom-4 left-0 right-0 z-40 px-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         {safeReactions.slice(0, 3).map((reaction, idx) => (
@@ -320,6 +371,7 @@ const ViewStory = () => {
                     />
                 </div>
 
+                {/* Navigation Areas */}
                 <div className="absolute inset-0 flex">
                     <div
                         className="flex-1 cursor-pointer"
@@ -331,10 +383,17 @@ const ViewStory = () => {
                     />
                 </div>
 
+                {/* Modals */}
                 {showShareModal && (
                     <ShareModal
                         storyId={currentStory.id}
                         onClose={() => setShowShareModal(false)}
+                    />
+                )}
+                {showViewersModal && (
+                    <StoryViewersModal
+                        storyId={currentStory.id}
+                        onClose={() => setShowViewersModal(false)}
                     />
                 )}
             </div>

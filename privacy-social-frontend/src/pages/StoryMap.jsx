@@ -6,6 +6,7 @@ import apiService from '../api/client';
 import ClusterMarker from '../components/map/ClusterMarker';
 import Loader from '../components/ui/Loader';
 import 'leaflet/dist/leaflet.css';
+import { useTheme } from '../context/ThemeContext';
 
 // Component to handle map events
 const MapEventHandler = ({ onBoundsChange }) => {
@@ -25,8 +26,6 @@ const MapEventHandler = ({ onBoundsChange }) => {
     });
     return null;
 };
-
-import { useTheme } from '../context/ThemeContext';
 
 const ThemeAwareTileLayer = () => {
     const { theme } = useTheme();
@@ -81,11 +80,9 @@ const StoryMap = () => {
 
             // Validate bounds
             if (currentBounds.north <= currentBounds.south || currentBounds.east <= currentBounds.west) {
-                console.warn('Invalid bounds, skipping:', currentBounds);
                 return { clusters: [], total: 0 };
             }
 
-            console.log('Loading clusters:', currentBounds);
             // Use apiService
             const response = await apiService.getStoriesMap(
                 currentBounds.north,
@@ -103,27 +100,44 @@ const StoryMap = () => {
     const clusters = data?.clusters || [];
 
     const handleBoundsChange = (bounds) => {
-        console.log('Bounds changed:', bounds);
         setCurrentBounds(bounds);
     };
 
     return (
         <div className="h-full relative">
-            <div className="absolute top-4 left-4 z-[1000] bg-surface-elevated rounded-lg shadow-lg p-4">
-                <h2 className="font-bold text-lg mb-2">Story Map</h2>
-                <p className="text-text-secondary text-sm">
-                    {clusters.length} clusters • {clusters.reduce((sum, c) => sum + c.count, 0)} stories
-                </p>
+            {/* Glassmorphism Info Card */}
+            <div className="absolute top-4 left-4 z-[1000] bg-surface/80 backdrop-blur-sm border border-border/50 rounded-3xl shadow-xl p-5 max-w-xs">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                        <span className="text-xl">🗺️</span>
+                    </div>
+                    <div>
+                        <h2 className="font-bold text-lg text-text-primary">Story Map</h2>
+                        <p className="text-xs text-text-tertiary">Explore nearby stories</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-bold text-xs shadow-lg">
+                            {clusters.length}
+                        </div>
+                        <span className="text-text-secondary font-medium">clusters</span>
+                    </div>
+                    <span className="text-text-tertiary">•</span>
+                    <span className="text-text-secondary font-medium">{clusters.reduce((sum, c) => sum + c.count, 0)} stories</span>
+                </div>
             </div>
 
             {isLoading && (
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[1000]">
-                    <Loader />
+                    <div className="bg-surface/90 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl">
+                        <Loader />
+                    </div>
                 </div>
             )}
 
             {error && (
-                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[1000] bg-red-500/90 text-white px-4 py-2 rounded-lg shadow-lg">
+                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[1000] bg-red-500/90 backdrop-blur-sm text-white px-6 py-3 rounded-3xl shadow-xl border border-red-600/50">
                     {error.response?.data?.error || error.message || 'Failed to load map'}
                 </div>
             )}

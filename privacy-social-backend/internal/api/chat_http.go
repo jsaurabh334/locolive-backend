@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -138,6 +139,8 @@ func (server *Server) getChatHistory(ctx *gin.Context) {
 		CreatedAt  time.Time       `json:"created_at"`
 		ReadAt     sql.NullTime    `json:"read_at"`
 		ExpiresAt  sql.NullTime    `json:"expires_at"`
+		MediaUrl   *string         `json:"media_url"`
+		MediaType  *string         `json:"media_type"`
 		Reactions  json.RawMessage `json:"reactions"`
 	}
 
@@ -166,6 +169,8 @@ func (server *Server) getChatHistory(ctx *gin.Context) {
 			CreatedAt:  m.CreatedAt,
 			ReadAt:     m.ReadAt,
 			ExpiresAt:  m.ExpiresAt,
+			MediaUrl:   nullStringToStrPtr(m.MediaUrl),
+			MediaType:  nullStringToStrPtr(m.MediaType),
 			Reactions:  reactionsJSON,
 		}
 	}
@@ -181,16 +186,20 @@ func (server *Server) getChatHistory(ctx *gin.Context) {
 // REST API helper to send a message
 type sendMessageRequest struct {
 	ReceiverID       uuid.UUID `json:"receiver_id" binding:"required"`
-	Content          string    `json:"content" binding:"required"`
+	Content          string    `json:"content"` // Not required if media is present
+	MediaUrl         string    `json:"media_url"`
+	MediaType        string    `json:"media_type"`
 	ExpiresInSeconds int64     `json:"expires_in_seconds"` // Optional
 }
 
 func (server *Server) sendMessage(ctx *gin.Context) {
 	var req sendMessageRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
+		fmt.Printf("ERROR: sendMessage JSON bind failed: %v\n", err)
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
+	fmt.Printf("DEBUG: Back-end received sendMessage request: %+v\n", req)
 
 	authPayload := getAuthPayload(ctx)
 
@@ -204,11 +213,18 @@ func (server *Server) sendMessage(ctx *gin.Context) {
 		return
 	}
 
-	// Handle expiry
+	// Handle expiry - DEFAULT TO 24 HOURS (Snapchat-style)
 	var expiresAt sql.NullTime
 	if req.ExpiresInSeconds > 0 {
+		// Custom expiry time provided
 		expiresAt = sql.NullTime{
 			Time:  time.Now().UTC().Add(time.Duration(req.ExpiresInSeconds) * time.Second),
+			Valid: true,
+		}
+	} else {
+		// DEFAULT: All messages expire after 24 hours
+		expiresAt = sql.NullTime{
+			Time:  time.Now().UTC().Add(24 * time.Hour),
 			Valid: true,
 		}
 	}
@@ -217,6 +233,8 @@ func (server *Server) sendMessage(ctx *gin.Context) {
 		SenderID:   authPayload.UserID,
 		ReceiverID: req.ReceiverID,
 		Content:    req.Content,
+		MediaUrl:   toNullString(req.MediaUrl),
+		MediaType:  toNullString(req.MediaType),
 		ExpiresAt:  expiresAt,
 	})
 	if err != nil {
@@ -332,9 +350,11 @@ func (server *Server) editMessage(ctx *gin.Context) {
 
 	// Update the message
 	updatedMsg, err := server.store.UpdateMessage(ctx, db.UpdateMessageParams{
-		ID:       messageID,
-		SenderID: authPayload.UserID,
-		Content:  req.Content,
+		ID:        messageID,
+		SenderID:  authPayload.UserID,
+		Content:   req.Content,
+		MediaUrl:  originalMsg.MediaUrl,  // Keep original media
+		MediaType: originalMsg.MediaType, // Keep original type
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -348,6 +368,53 @@ func (server *Server) editMessage(ctx *gin.Context) {
 	server.sendWSNotification(originalMsg.ReceiverID, "message_edited", updatedMsg)
 
 	ctx.JSON(http.StatusOK, updatedMsg)
+}
+
+// saveMessage prevents a message from expiring (sets expires_at to NULL)
+func (server *Server) saveMessage(ctx *gin.Context) {
+	messageIDStr := ctx.Param("id")
+	messageID, ok := parseUUIDParam(ctx, messageIDStr, "message_id")
+	if !ok {
+		return
+	}
+
+	authPayload := getAuthPayload(ctx)
+
+	// Get the message first
+	msg, err := server.store.GetMessage(ctx, messageID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Verify user is part of the conversation (sender or receiver)
+	if msg.SenderID != authPayload.UserID && msg.ReceiverID != authPayload.UserID {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "You can only save messages from your own conversations"})
+		return
+	}
+
+	// Save the message (set expires_at to NULL)
+	savedMsg, err := server.store.SaveMessage(ctx, messageID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Invalidate cache
+	server.invalidateConversationCache(msg.SenderID, msg.ReceiverID)
+
+	// Notify the other user
+	otherUserID := msg.SenderID
+	if msg.SenderID == authPayload.UserID {
+		otherUserID = msg.ReceiverID
+	}
+	server.sendWSNotification(otherUserID, "message_saved", gin.H{"message_id": messageID, "saved_by": authPayload.UserID})
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "Message saved successfully", "data": savedMsg})
 }
 
 // markConversationRead marks all messages from a user as read

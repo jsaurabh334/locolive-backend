@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import { useToast } from '../context/ToastContext';
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -12,25 +13,28 @@ const Register = () => {
         phone: '',
         password: ''
     });
+
     const { register, isLoading, error } = useAuth();
     const navigate = useNavigate();
+    const toast = useToast();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             await register(formData);
+            toast.success("Account created successfully!");
             navigate('/');
         } catch (err) {
-            console.error('Registration failed', err);
+            toast.error(err.response?.data?.error || "Registration failed");
         }
     };
 
     return (
         <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
             <div className="w-full max-w-md">
-                <Card className="p-8 shadow-2xl border-neutral-800">
-                    <h2 className="text-3xl font-bold text-white mb-2 text-center">Create Account</h2>
-                    <p className="text-neutral-400 mb-8 text-center text-sm">Join the privacy-first revolution</p>
+                <Card className="p-6 md:p-8 shadow-2xl border-neutral-800">
+                    <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 text-center">Create Account</h2>
+                    <p className="text-neutral-400 mb-8 text-center text-xs md:text-sm">Join the privacy-first revolution</p>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <Input

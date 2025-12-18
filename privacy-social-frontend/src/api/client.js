@@ -47,6 +47,7 @@ const apiService = {
     sendMessage: (data) => apiClient.post('/messages', data),
     editMessage: (id, content) => apiClient.put(`/messages/${id}`, { content }),
     deleteMessage: (id) => apiClient.delete(`/messages/${id}`),
+    saveMessage: (id) => apiClient.put(`/messages/${id}/save`),
     deleteConversation: (userId) => apiClient.delete(`/conversations/${userId}`),
     markConversationRead: (userId) => apiClient.put(`/messages/read/${userId}`),
     addMessageReaction: (messageId, emoji) => apiClient.post(`/messages/${messageId}/reactions`, { emoji }),
@@ -57,6 +58,7 @@ const apiService = {
     // Stories
     getFeed: (page = 1, lat, lng) => apiClient.get(`/feed?page=${page}&latitude=${lat}&longitude=${lng}`),
     createStory: (data) => apiClient.post('/stories', data),
+    getStory: (id) => apiClient.get(`/stories/${id}`),
     deleteStory: (id) => apiClient.delete(`/stories/${id}`),
     getStoriesMap: (north, south, east, west) => apiClient.get(`/stories/map?north=${north}&south=${south}&east=${east}&west=${west}`),
     getConnectionStories: () => apiClient.get('/stories/connections'),
@@ -65,7 +67,7 @@ const apiService = {
     reactToStory: (id, emoji) => apiClient.post(`/stories/${id}/react`, { emoji }),
     deleteStoryReaction: (id, emoji) => apiClient.delete(`/stories/${id}/react`, { data: { emoji } }),
     getStoryReactions: (id) => apiClient.get(`/stories/${id}/reactions`),
-    shareStory: (id) => apiClient.post('/stories/share', { story_id: id }),
+    shareStory: (data) => apiClient.post('/stories/share', data),
 
     // Notifications
     getNotifications: (page = 1) => apiClient.get(`/notifications?page=${page}`),
@@ -77,9 +79,16 @@ const apiService = {
     getCrossings: () => apiClient.get('/crossings'),
     createReport: (data) => apiClient.post('/reports', data),
     boostProfile: (duration) => apiClient.post('/profile/boost', { duration_hours: duration }),
-    getActivityStatus: () => apiClient.get('/activity/status'),
+    getActivityStatus: (userId) => apiClient.get(userId ? `/activity/status?user_id=${userId}` : '/activity/status'),
     searchUsers: (query) => apiClient.get(`/users/search?q=${query}`),
-    uploadFile: (formData) => apiClient.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadFile: (formData) => {
+        const token = useAuthStore.getState().accessToken || localStorage.getItem('access_token');
+        return axios.post(`${API_URL}/upload`, formData, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+    },
     getProfileVisitors: () => apiClient.get('/profile/visitors'),
     panicMode: () => apiClient.post('/location/panic'),
 

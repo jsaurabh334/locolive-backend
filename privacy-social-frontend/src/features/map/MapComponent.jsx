@@ -1,8 +1,11 @@
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import { useLocation } from '../../context/LocationContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useFeed } from '../feed/useFeed';
 import { useEffect } from 'react';
 import 'leaflet/dist/leaflet.css';
+
+// ... existing icon setup ...
 
 // Fix for default marker icon in React Leaflet with Webpack/Vite
 import L from 'leaflet';
@@ -29,7 +32,11 @@ const RecenterMap = ({ lat, lng }) => {
 const MapComponent = () => {
     const { location, error, permissionStatus } = useLocation();
     const { theme } = useTheme();
+    const { data: feedData } = useFeed();
     const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+    // Default to 5000m if not yet loaded
+    const radius = feedData?.search_radius || 5000;
 
     if (error) {
         return (
@@ -59,7 +66,7 @@ const MapComponent = () => {
             {/* Map Container needs explicit height in parent or self */}
             <MapContainer
                 center={[location.lat, location.lng]}
-                zoom={15}
+                zoom={13}
                 scrollWheelZoom={true}
                 className="h-full w-full z-0"
                 zoomControl={false}
@@ -71,9 +78,24 @@ const MapComponent = () => {
                         : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     }
                 />
+
+                {/* Search Radius Circle */}
+                <Circle
+                    center={[location.lat, location.lng]}
+                    radius={radius}
+                    pathOptions={{
+                        color: 'var(--color-primary-500)',
+                        fillColor: 'var(--color-primary-500)',
+                        fillOpacity: 0.1,
+                        weight: 1,
+                        dashArray: '5, 5'
+                    }}
+                />
+
                 <Marker position={[location.lat, location.lng]}>
                     <Popup>
-                        You are here.
+                        You are here. <br />
+                        Searching within {Math.round(radius / 1000)}km
                     </Popup>
                 </Marker>
                 <RecenterMap lat={location.lat} lng={location.lng} />

@@ -131,6 +131,8 @@ func (server *Server) getFeed(ctx *gin.Context) {
 		return
 	}
 
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
 	// Create cache key based on user's geohash (5 chars = ~2.4km precision)
 	userGeohash := geohash.Encode(req.Latitude, req.Longitude)
 	if len(userGeohash) > 5 {
@@ -148,28 +150,38 @@ func (server *Server) getFeed(ctx *gin.Context) {
 	}
 
 	// Cache miss - Fetch from DB
+	// Incremental Radius Search (5km -> 25km)
+	var searchRadius float64 = 5000
+	const maxRadius = 25000
+	const stepRadius = 5000
+
 	var stories []db.GetStoriesWithinRadiusRow
-	var message string = "Nearby"
+	var message string
 
-	// Get auth payload for blocking/privacy rules
-	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+	for searchRadius <= maxRadius {
+		stories, err = server.store.GetStoriesWithinRadius(ctx, db.GetStoriesWithinRadiusParams{
+			Lng:          req.Longitude,
+			Lat:          req.Latitude,
+			RadiusMeters: searchRadius,
+			UserID:       authPayload.UserID,
+		})
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+			return
+		}
 
-	// Use fixed 50km radius to ensure users see others even if they have their own story nearby
-	// (Previous loop bug caused early exit if own story was found at <5km)
-	stories, err = server.store.GetStoriesWithinRadius(ctx, db.GetStoriesWithinRadiusParams{
-		Lng:          req.Longitude,
-		Lat:          req.Latitude,
-		RadiusMeters: 50000.0, // 50km
-		UserID:       authPayload.UserID,
-	})
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
-		return
+		if len(stories) > 0 {
+			break
+		}
+
+		searchRadius += stepRadius
 	}
 
-	// If no stories found
+	// Update message based on results
 	if len(stories) == 0 {
-		message = "No users found nearby"
+		message = "No stories found within 25km"
+	} else {
+		message = "Stories found nearby"
 	}
 
 	// Convert to response DTOs
@@ -179,9 +191,10 @@ func (server *Server) getFeed(ctx *gin.Context) {
 	}
 
 	response := gin.H{
-		"stories": storyResponses,
-		"count":   len(storyResponses),
-		"message": message,
+		"stories":       storyResponses,
+		"count":         len(storyResponses),
+		"message":       message,
+		"search_radius": searchRadius,
 	}
 
 	// Cache the result for 5 minutes
@@ -269,4 +282,43 @@ func (server *Server) getConnectionStories(ctx *gin.Context) {
 
 	ctx.Header("X-Cache", "MISS")
 	ctx.JSON(http.StatusOK, storyResponses)
+}
+
+// getStory retrieves a single story by ID
+func (server *Server) getStory(ctx *gin.Context) {
+	storyID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	story, err := server.store.GetStoryByID(ctx, storyID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "story not found"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Check if story is expired
+	if time.Now().After(story.ExpiresAt) {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "story has expired"})
+		return
+	}
+
+	// Convert to response DTO
+	rsp := toStoryResponseFromStory(story)
+
+	// Fetch author details since they aren't in the partial story object
+	user, err := server.store.GetUserByID(ctx, story.UserID)
+	if err == nil {
+		rsp.Username = user.Username
+		if user.AvatarUrl.Valid {
+			rsp.AvatarURL = &user.AvatarUrl.String
+		}
+	}
+
+	ctx.JSON(http.StatusOK, rsp)
 }

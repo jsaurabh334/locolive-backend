@@ -15,7 +15,10 @@ export const LocationProvider = ({ children }) => {
 
     const pingMutation = useMutation({
         mutationFn: (coords) => apiService.pingLocation({ latitude: coords.lat, longitude: coords.lng }),
-        onError: (err) => console.error("Location ping failed", err),
+        onError: (err) => {
+            // Silently fail for background pings
+            // console.error("Location ping failed", err)
+        },
     });
 
     const lastPingRef = useRef(0);

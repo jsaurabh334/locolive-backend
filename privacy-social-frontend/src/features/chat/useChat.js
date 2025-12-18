@@ -22,18 +22,25 @@ export const useMessages = (userId) => {
 export const useSendMessage = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ receiverId, content }) => apiService.sendMessage({ receiver_id: receiverId, content }),
-        onMutate: async ({ receiverId, content }) => {
+        mutationFn: ({ receiverId, content, media_url, media_type }) => apiService.sendMessage({
+            receiver_id: receiverId,
+            content,
+            media_url: media_url || "",
+            media_type: media_type || ""
+        }),
+        onMutate: async ({ receiverId, content, media_url, media_type }) => {
             await queryClient.cancelQueries({ queryKey: ['messages', receiverId] });
             const previousMessages = queryClient.getQueryData(['messages', receiverId]);
 
             const optimisticMessage = {
                 id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 content,
-                sender_id: 'current-user', // Should be replaced by actual ID if available
+                sender_id: 'current-user',
                 receiver_id: receiverId,
                 created_at: new Date().toISOString(),
                 read_at: null,
+                media_url: media_url || null,
+                media_type: media_type || null
             };
 
             queryClient.setQueryData(['messages', receiverId], (old) => [...(old || []), optimisticMessage]);
@@ -52,7 +59,7 @@ export const useSendMessage = () => {
 export const useDeleteMessage = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ messageId }) => apiService.deleteMessage(messageId),
+        mutationFn: (messageId) => apiService.deleteMessage(messageId),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['messages'] }),
     });
 };
@@ -68,7 +75,7 @@ export const useEditMessage = () => {
 export const useMarkConversationRead = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ userId }) => apiService.markConversationRead(userId),
+        mutationFn: (userId) => apiService.markConversationRead(userId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['unreadMessageCount'] });
             queryClient.invalidateQueries({ queryKey: ['messages'] });
@@ -106,8 +113,8 @@ export const useUnreadMessageCount = () => {
                 const response = await apiService.getUnreadMessageCount();
                 return response.data?.unread_count ?? 0;
             } catch (error) {
-                console.error('Failed to fetch unread count:', error);
-                return 0; // Return 0 on error instead of undefined
+                // Silently return 0 on error
+                return 0;
             }
         },
         refetchOnWindowFocus: false, // Updated via WebSocket
@@ -130,7 +137,7 @@ export const useConversations = () => {
 export const useDeleteConversation = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ userId }) => apiService.deleteConversation(userId),
+        mutationFn: (userId) => apiService.deleteConversation(userId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['conversations'] });
             queryClient.invalidateQueries({ queryKey: ['messages'] });
@@ -139,3 +146,10 @@ export const useDeleteConversation = () => {
     });
 };
 
+export const useSaveMessage = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (messageId) => apiService.saveMessage(messageId),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['messages'] }),
+    });
+};

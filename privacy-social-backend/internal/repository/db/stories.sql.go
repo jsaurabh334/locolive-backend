@@ -106,8 +106,15 @@ WHERE
   c.status = 'accepted'
   AND s.expires_at > now()
   AND u.is_shadow_banned = false
-  -- Strict Streak Rule (DISABLED)
+  AND u.is_shadow_banned = false
+  -- strict streak rule (DISABLED)
   -- AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
+  -- Block Logic: Exclude if blocked by either party
+  AND NOT EXISTS (
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = $1 AND bu.blocked_id = s.user_id)
+       OR (bu.blocker_id = s.user_id AND bu.blocked_id = $1)
+  )
 ORDER BY s.created_at DESC
 `
 
@@ -178,6 +185,7 @@ JOIN users u ON s.user_id = u.id
 WHERE s.geom && ST_MakeEnvelope($1::float8, $2::float8, $3::float8, $4::float8, 4326)
 AND s.expires_at > now()
 AND u.is_shadow_banned = false
+AND u.is_ghost_mode = false
 AND NOT EXISTS (
     SELECT 1 FROM blocked_users bu 
     WHERE (bu.blocker_id = $5 AND bu.blocked_id = s.user_id)
@@ -295,6 +303,7 @@ WHERE
   -- Allow anonymous stories (handled in presentation)
   -- AND (s.is_anonymous = false OR s.user_id = @user_id)
   AND u.is_shadow_banned = false
+  AND u.is_ghost_mode = false
   -- Strict Streak Rule (DISABLED)
   -- AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
   -- Block Logic: Exclude if blocked by either party (using blocked_users table)
@@ -456,6 +465,21 @@ func (q *Queries) GetStoryStats(ctx context.Context) (GetStoryStatsRow, error) {
 	var i GetStoryStatsRow
 	err := row.Scan(&i.TotalStories, &i.Stories24h, &i.ExpiredStories)
 	return i, err
+}
+
+const hasValidStory = `-- name: HasValidStory :one
+SELECT EXISTS (
+    SELECT 1 FROM stories 
+    WHERE user_id = $1 
+    AND expires_at > now()
+)
+`
+
+func (q *Queries) HasValidStory(ctx context.Context, userID uuid.UUID) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasValidStory, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const listAllStories = `-- name: ListAllStories :many

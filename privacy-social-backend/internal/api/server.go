@@ -8,6 +8,7 @@ import (
 
 	"privacy-social-backend/internal/config"
 	"privacy-social-backend/internal/repository"
+	"privacy-social-backend/internal/service/location"
 	"privacy-social-backend/internal/token"
 )
 
@@ -20,6 +21,7 @@ type Server struct {
 	router     *gin.Engine
 	hub        *Hub
 	safety     *SafetyMonitor
+	location   *location.RedisLocationService
 }
 
 // NewServer creates a new HTTP server and setup routing
@@ -39,13 +41,17 @@ func NewServer(config config.Config, store repository.Store) (*Server, error) {
 	hub := NewHub()
 	go hub.Run() // Start the hub in a goroutine
 
+	safety := NewSafetyMonitor(rdb)
+	locationService := location.NewRedisLocationService(rdb, store)
+
 	server := &Server{
 		config:     config,
 		store:      store,
 		tokenMaker: tokenMaker,
 		redis:      rdb,
-		safety:     NewSafetyMonitor(rdb),
+		safety:     safety,
 		hub:        hub,
+		location:   locationService,
 	}
 
 	server.setupRouter()

@@ -9,19 +9,22 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
 
-// Premium Card Component
+// Premium Card Component with Micro-interactions
 const UserCard = ({ user, action, children }) => (
     <motion.div
         layout
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="group relative overflow-hidden bg-surface/60 backdrop-blur-sm hover:bg-surface/80 border border-border/50 hover:border-primary-500/30 rounded-3xl transition-all duration-300 p-6 shadow-xl hover:shadow-2xl"
+        whileHover={{ y: -4, scale: 1.01 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        className="group relative overflow-hidden bg-surface/60 backdrop-blur-sm hover:bg-surface/80 border border-border/50 hover:border-primary-500/30 rounded-3xl transition-all duration-300 p-6 shadow-xl hover:shadow-2xl cursor-pointer"
     >
         <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
         <div className="relative flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer" onClick={action} role="button">
+            <div className="flex items-center gap-4 flex-1 min-w-0" onClick={action} role="button">
                 <div className="relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-primary-500 to-purple-500 rounded-full blur-md opacity-0 group-hover:opacity-50 transition-opacity duration-300" />
                     <Avatar
@@ -73,14 +76,25 @@ const Connections = () => {
 
     const handleAccept = (user) => updateConnection.mutate({ requesterId: user.requester_id || user.id, status: 'accepted' });
     const handleReject = (user) => removeConnection.mutate(user.requester_id || user.id);
-    const handleCancel = (user) => removeConnection.mutate(user.target_id || user.id);
-    const handleConnect = (targetId) => sendRequest.mutate(targetId);
+
+    // Update local state on cancel
+    const handleCancel = (user) => {
+        removeConnection.mutate(user.target_id || user.id);
+    };
+
+    // Update local state on connect
+    const handleConnect = (targetId) => {
+        sendRequest.mutate(targetId);
+    };
+
     const handleRemove = (user) => {
         if (window.confirm(`Remove ${user.username}?`)) removeConnection.mutate(user.id);
     };
 
     const getConnectionStatus = (targetId) => {
         if (targetId === currentUser?.id) return 'self';
+
+        // Check optimistically updated lists
         if (connections?.some(c => c.id === targetId)) return 'friends';
         if (sentRequests?.some(r => r.target_id === targetId)) return 'sent';
         if (requests?.some(r => r.requester_id === targetId)) return 'pending';
@@ -110,7 +124,7 @@ const Connections = () => {
                         <h1 className="text-2xl font-bold bg-gradient-to-r from-text-primary to-text-secondary bg-clip-text text-transparent">
                             Connections
                         </h1>
-                        <p className="text-xs text-text-tertiary">Manage your network</p>
+                        <p className="text-xs text-text-tertiary mt-1">Build your network • Share stories • Stay connected</p>
                     </div>
                 </div>
 
@@ -140,16 +154,26 @@ const Connections = () => {
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={cn(
-                                    "relative px-5 py-2.5 text-sm font-semibold transition-all duration-300 rounded-full",
-                                    activeTab === tab.id ? "text-text-primary" : "text-text-tertiary hover:text-text-secondary"
+                                    "relative px-5 py-2.5 text-sm font-semibold transition-all duration-300 rounded-t-xl",
+                                    activeTab === tab.id
+                                        ? "text-primary-500 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                                        : "text-text-tertiary hover:text-text-secondary opacity-60 hover:opacity-100"
                                 )}
                             >
                                 {activeTab === tab.id && (
-                                    <motion.div
-                                        layoutId="activeTab"
-                                        className="absolute inset-0 bg-surface/60 backdrop-blur-sm border border-border/50 rounded-full shadow-lg"
-                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                    />
+                                    <>
+                                        <motion.div
+                                            layoutId="activeTab"
+                                            className="absolute inset-0 bg-surface/60 backdrop-blur-sm border border-border/50 border-b-0 rounded-t-xl shadow-lg"
+                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                        />
+                                        {/* Animated Underline */}
+                                        <motion.div
+                                            layoutId="activeTabUnderline"
+                                            className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary-500 to-purple-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
+                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                        />
+                                    </>
                                 )}
                                 <span className="relative z-10 flex items-center gap-2">
                                     {tab.label}
@@ -292,9 +316,9 @@ const Connections = () => {
 
                             {activeTab === 'pending' && (
                                 <div className="space-y-3">
-                                    {loadingRequests ? <Loader /> : requests?.length === 0 ? <EmptyState title="No pending requests" /> : (
+                                    {loadingRequests ? <Loader /> : requests?.length === 0 ? <EmptyState title="No pending requests" message="You're all caught up 🎉" /> : (
                                         requests.map((user) => (
-                                            <UserCard key={user.requester_id} user={user} action={() => navigate(`/profile/${user.requester_id}`)}>
+                                            <UserCard key={`pending-${user.requester_id}`} user={user} action={() => navigate(`/profile/${user.requester_id}`)}>
                                                 <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); handleAccept(user); }} isLoading={updateConnection.isPending}>Accept</Button>
                                                 <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleReject(user); }} isLoading={removeConnection.isPending}>Reject</Button>
                                             </UserCard>
@@ -305,9 +329,9 @@ const Connections = () => {
 
                             {activeTab === 'sent' && (
                                 <div className="space-y-3">
-                                    {loadingSent ? <Loader /> : sentRequests?.length === 0 ? <EmptyState title="No sent requests" /> : (
+                                    {loadingSent ? <Loader /> : sentRequests?.length === 0 ? <EmptyState title="No sent requests" message="Find people to connect with above" /> : (
                                         sentRequests.map((user) => (
-                                            <UserCard key={user.target_id} user={user} action={() => navigate(`/profile/${user.target_id}`)}>
+                                            <UserCard key={`sent-${user.target_id}`} user={user} action={() => navigate(`/profile/${user.target_id}`)}>
                                                 <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleCancel(user); }} isLoading={removeConnection.isPending}>Cancel</Button>
                                             </UserCard>
                                         ))

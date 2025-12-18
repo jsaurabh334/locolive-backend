@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
-import RightSidebar from './RightSidebar';
 
 const Layout = () => {
     return (
@@ -11,12 +10,10 @@ const Layout = () => {
 
             {/* Main Content Area */}
             {/* md:pl-64 matches sidebar width. pb-16 matches bottom nav height for mobile. */}
-            <main className="md:pl-64 lg:pl-72 xl:pr-80 pb-16 md:pb-0 min-h-screen transition-all duration-200 ease-in-out">
-                <div className="mx-auto max-w-2xl min-h-screen relative">
+            <main className="md:pl-64 lg:pl-72 pb-16 md:pb-0 min-h-screen transition-all duration-200 ease-in-out">
+                <div className="mx-auto max-w-4xl min-h-screen relative">
                     <Outlet />
                 </div>
-
-                <RightSidebar />
             </main>
 
             {/* Mobile Bottom Nav */}

@@ -45,36 +45,58 @@ const RightSidebar = () => {
             <div className="space-y-6">
                 <section>
                     <h3 className="text-xs font-bold text-text-tertiary mb-4 uppercase tracking-widest">Suggested for you</h3>
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                         <AnimatePresence>
-                            {suggested.slice(0, 5).map(user => (
+                            {suggested.slice(0, 5).map((user, index) => (
                                 <motion.div
                                     key={user.id}
                                     layout
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, x: -20 }}
-                                    whileHover={{ scale: 1.02, backgroundColor: 'rgba(255, 255, 255, 0.05)' }}
-                                    className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors group relative"
+                                    transition={{ delay: index * 0.1, duration: 0.3 }}
+                                    whileHover={{ scale: 1.02 }}
+                                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all group relative bg-surface/30 hover:bg-surface/50 border border-border/20 hover:border-primary-500/30 hover:shadow-lg hover:shadow-primary-500/10"
                                     onClick={() => navigate(`/profile/${user.id}`)}
                                 >
-                                    <Avatar src={user.avatar_url} alt={user.username} size="md" />
-
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-semibold text-text-primary text-sm truncate">{user.username}</h4>
-                                        <p className="text-[10px] text-text-secondary truncate">
-                                            {user.mutual_count > 0 ? `${user.mutual_count} mutuals` : 'New to app'}
-                                        </p>
+                                    {/* Avatar with Online Indicator */}
+                                    <div className="relative">
+                                        <Avatar src={user.avatar_url} alt={user.username} size="md" />
+                                        {user.is_online && (
+                                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background">
+                                                <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>
+                                            </div>
+                                        )}
                                     </div>
 
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="font-semibold text-text-primary text-sm truncate group-hover:text-primary-500 transition-colors">
+                                            {user.username}
+                                        </h4>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            {user.mutual_count > 0 ? (
+                                                <>
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-primary-400 font-medium bg-primary-500/10 px-1.5 py-0.5 rounded-full">
+                                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                                                        </svg>
+                                                        {user.mutual_count} mutual{user.mutual_count !== 1 ? 's' : ''}
+                                                    </span>
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] text-text-tertiary">New to app</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Follow Button - Always Visible */}
                                     <Button
                                         size="xs"
-                                        variant="secondary"
-                                        className="bg-white/5 hover:bg-white/10 border-0 opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100"
+                                        className="bg-primary-500 hover:bg-primary-600 text-white border-0 shadow-md hover:shadow-lg transition-all group-hover:scale-105 font-semibold px-4"
                                         onClick={(e) => handleConnect(e, user.id)}
                                         isLoading={sendRequest.isPending && sendRequest.variables === user.id}
                                     >
-                                        Add
+                                        Follow
                                     </Button>
                                 </motion.div>
                             ))}

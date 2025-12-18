@@ -1,25 +1,33 @@
 import { useState } from 'react';
-import { useUpdateProfile } from './useProfile';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { useUpdateProfile } from './useProfile';
 import apiService from '../../api/client';
-import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
+import Button from '../../components/ui/Button';
 
 const EditProfile = ({ profile, onClose }) => {
     const { setAuth } = useAuth();
+    const toast = useToast();
+
     const [formData, setFormData] = useState({
         username: profile?.username || '',
         full_name: profile?.full_name || '',
         bio: profile?.bio || '',
         avatar_url: profile?.avatar_url || '',
+        theme: profile?.theme || 'light',
+        profile_visibility: profile?.profile_visibility || 'public'
     });
+
     const [isUploading, setIsUploading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         setIsUploading(true);
+        setError(null);
         try {
             const formData = new FormData();
             formData.append('file', file);
@@ -27,6 +35,8 @@ const EditProfile = ({ profile, onClose }) => {
             setFormData(prev => ({ ...prev, avatar_url: response.data.url }));
         } catch (error) {
             console.error("Upload failed", error);
+            setError("Failed to upload image.");
+            toast.error("Failed to upload image.");
         } finally {
             setIsUploading(false);
         }
@@ -39,11 +49,22 @@ const EditProfile = ({ profile, onClose }) => {
         updateProfile(formData, {
             onSuccess: async (data) => {
                 // Update auth store with new profile data
-                const response = await apiService.getMyProfile();
-                if (response.data) {
-                    setAuth(response.data, localStorage.getItem('access_token'));
+                // We fetch the profile again to ensure we have the full updated object
+                try {
+                    const response = await apiService.getMyProfile();
+                    if (response.data) {
+                        setAuth(response.data, localStorage.getItem('access_token'));
+                    }
+                    toast.success("Profile updated successfully");
+                    onClose();
+                } catch (err) {
+                    console.error("Failed to refresh profile", err);
+                    onClose(); // Close anyway if update succeeded
                 }
-                onClose();
+            },
+            onError: (err) => {
+                setError(err.response?.data?.error || "Failed to update profile");
+                toast.error(err.response?.data?.error || "Failed to update profile");
             }
         });
     };
@@ -141,6 +162,11 @@ const EditProfile = ({ profile, onClose }) => {
                 >
                     {isPending || isUploading ? 'Saving...' : 'Save Changes'}
                 </Button>
+                {error && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm text-center mb-4">
+                        {error}
+                    </div>
+                )}
             </form>
         </Modal>
     );

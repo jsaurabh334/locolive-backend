@@ -266,14 +266,16 @@ type Location struct {
 }
 
 type Message struct {
-	ID         uuid.UUID    `json:"id"`
-	SenderID   uuid.UUID    `json:"sender_id"`
-	ReceiverID uuid.UUID    `json:"receiver_id"`
-	Content    string       `json:"content"`
-	IsRead     bool         `json:"is_read"`
-	CreatedAt  time.Time    `json:"created_at"`
-	ReadAt     sql.NullTime `json:"read_at"`
-	ExpiresAt  sql.NullTime `json:"expires_at"`
+	ID         uuid.UUID      `json:"id"`
+	SenderID   uuid.UUID      `json:"sender_id"`
+	ReceiverID uuid.UUID      `json:"receiver_id"`
+	Content    string         `json:"content"`
+	IsRead     bool           `json:"is_read"`
+	CreatedAt  time.Time      `json:"created_at"`
+	ReadAt     sql.NullTime   `json:"read_at"`
+	ExpiresAt  sql.NullTime   `json:"expires_at"`
+	MediaUrl   sql.NullString `json:"media_url"`
+	MediaType  sql.NullString `json:"media_type"`
 }
 
 type MessageReaction struct {
@@ -367,10 +369,11 @@ type StoryReaction struct {
 }
 
 type StoryView struct {
-	ID       uuid.UUID `json:"id"`
-	StoryID  uuid.UUID `json:"story_id"`
-	UserID   uuid.UUID `json:"user_id"`
-	ViewedAt time.Time `json:"viewed_at"`
+	ID        uuid.UUID `json:"id"`
+	StoryID   uuid.UUID `json:"story_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	ViewedAt  time.Time `json:"viewed_at"`
+	ViewCount int32     `json:"view_count"`
 }
 
 type User struct {

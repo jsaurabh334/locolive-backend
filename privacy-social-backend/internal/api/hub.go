@@ -85,6 +85,15 @@ func (h *Hub) SendToUser(userID uuid.UUID, message []byte) {
 	}
 }
 
+// IsUserOnline checks if a user has any active connections
+func (h *Hub) IsUserOnline(userID uuid.UUID) bool {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	clients, ok := h.clients[userID]
+	return ok && len(clients) > 0
+}
+
 // WSMessage defines the structure of WebSocket messages
 type WSMessage struct {
 	Type      string      `json:"type"` // "new_message", "typing", etc.
@@ -116,12 +125,6 @@ func (c *Client) WritePump() {
 				return
 			}
 			w.Write(message)
-
-			// Add queued chat messages to the current websocket message.
-			n := len(c.Send)
-			for i := 0; i < n; i++ {
-				w.Write(<-c.Send)
-			}
 
 			if err := w.Close(); err != nil {
 				return

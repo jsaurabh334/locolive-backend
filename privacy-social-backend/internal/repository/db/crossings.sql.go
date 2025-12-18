@@ -79,6 +79,11 @@ AND u1.is_ghost_mode = false
 AND u2.is_ghost_mode = false
 AND u1.is_shadow_banned = false
 AND u2.is_shadow_banned = false
+AND NOT EXISTS (
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = l1.user_id AND bu.blocked_id = l2.user_id)
+       OR (bu.blocker_id = l2.user_id AND bu.blocked_id = l1.user_id)
+)
 GROUP BY l1.user_id, l2.user_id, l1.geohash, l1.time_bucket
 `
 
@@ -94,6 +99,7 @@ type FindPotentialCrossingsRow struct {
 	TimeBucket time.Time `json:"time_bucket"`
 }
 
+// Block Logic
 func (q *Queries) FindPotentialCrossings(ctx context.Context, arg FindPotentialCrossingsParams) ([]FindPotentialCrossingsRow, error) {
 	rows, err := q.db.QueryContext(ctx, findPotentialCrossings, arg.MinTime, arg.MaxTime)
 	if err != nil {
@@ -142,6 +148,12 @@ WHERE
   AND (
     (c.user_id_1 = $1 AND u2.is_shadow_banned = false) OR
     (c.user_id_2 = $1 AND u1.is_shadow_banned = false)
+  )
+  -- Block Logic
+  AND NOT EXISTS (
+    SELECT 1 FROM blocked_users bu 
+    WHERE (bu.blocker_id = $1 AND bu.blocked_id = CASE WHEN c.user_id_1 = $1 THEN c.user_id_2 ELSE c.user_id_1 END)
+       OR (bu.blocker_id = CASE WHEN c.user_id_1 = $1 THEN c.user_id_2 ELSE c.user_id_1 END AND bu.blocked_id = $1)
   )
 ORDER BY c.occurred_at DESC
 `

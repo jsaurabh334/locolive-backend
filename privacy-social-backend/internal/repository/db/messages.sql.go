@@ -18,17 +18,21 @@ INSERT INTO messages (
   sender_id,
   receiver_id,
   content,
+  media_url,
+  media_type,
   expires_at
 ) VALUES (
-  $1, $2, $3, $4
-) RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at
+  $1, $2, $3, $4, $5, $6
+) RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at, media_url, media_type
 `
 
 type CreateMessageParams struct {
-	SenderID   uuid.UUID    `json:"sender_id"`
-	ReceiverID uuid.UUID    `json:"receiver_id"`
-	Content    string       `json:"content"`
-	ExpiresAt  sql.NullTime `json:"expires_at"`
+	SenderID   uuid.UUID      `json:"sender_id"`
+	ReceiverID uuid.UUID      `json:"receiver_id"`
+	Content    string         `json:"content"`
+	MediaUrl   sql.NullString `json:"media_url"`
+	MediaType  sql.NullString `json:"media_type"`
+	ExpiresAt  sql.NullTime   `json:"expires_at"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
@@ -36,6 +40,8 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		arg.SenderID,
 		arg.ReceiverID,
 		arg.Content,
+		arg.MediaUrl,
+		arg.MediaType,
 		arg.ExpiresAt,
 	)
 	var i Message
@@ -48,6 +54,8 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.CreatedAt,
 		&i.ReadAt,
 		&i.ExpiresAt,
+		&i.MediaUrl,
+		&i.MediaType,
 	)
 	return i, err
 }
@@ -248,7 +256,7 @@ func (q *Queries) GetConversationList(ctx context.Context, receiverID uuid.UUID)
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at FROM messages WHERE id = $1
+SELECT id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at, media_url, media_type FROM messages WHERE id = $1
 `
 
 func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error) {
@@ -263,6 +271,8 @@ func (q *Queries) GetMessage(ctx context.Context, id uuid.UUID) (Message, error)
 		&i.CreatedAt,
 		&i.ReadAt,
 		&i.ExpiresAt,
+		&i.MediaUrl,
+		&i.MediaType,
 	)
 	return i, err
 }
@@ -330,7 +340,7 @@ func (q *Queries) GetUnreadMessageCount(ctx context.Context, receiverID uuid.UUI
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT m.id, m.sender_id, m.receiver_id, m.content, m.is_read, m.created_at, m.read_at, m.expires_at,
+SELECT m.id, m.sender_id, m.receiver_id, m.content, m.is_read, m.created_at, m.read_at, m.expires_at, m.media_url, m.media_type,
        COALESCE(
            (SELECT json_agg(json_build_object(
                'id', mr.id,
@@ -358,15 +368,17 @@ type ListMessagesParams struct {
 }
 
 type ListMessagesRow struct {
-	ID         uuid.UUID    `json:"id"`
-	SenderID   uuid.UUID    `json:"sender_id"`
-	ReceiverID uuid.UUID    `json:"receiver_id"`
-	Content    string       `json:"content"`
-	IsRead     bool         `json:"is_read"`
-	CreatedAt  time.Time    `json:"created_at"`
-	ReadAt     sql.NullTime `json:"read_at"`
-	ExpiresAt  sql.NullTime `json:"expires_at"`
-	Reactions  interface{}  `json:"reactions"`
+	ID         uuid.UUID      `json:"id"`
+	SenderID   uuid.UUID      `json:"sender_id"`
+	ReceiverID uuid.UUID      `json:"receiver_id"`
+	Content    string         `json:"content"`
+	IsRead     bool           `json:"is_read"`
+	CreatedAt  time.Time      `json:"created_at"`
+	ReadAt     sql.NullTime   `json:"read_at"`
+	ExpiresAt  sql.NullTime   `json:"expires_at"`
+	MediaUrl   sql.NullString `json:"media_url"`
+	MediaType  sql.NullString `json:"media_type"`
+	Reactions  interface{}    `json:"reactions"`
 }
 
 func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]ListMessagesRow, error) {
@@ -387,6 +399,8 @@ func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]L
 			&i.CreatedAt,
 			&i.ReadAt,
 			&i.ExpiresAt,
+			&i.MediaUrl,
+			&i.MediaType,
 			&i.Reactions,
 		); err != nil {
 			return nil, err
@@ -422,7 +436,7 @@ const markMessageRead = `-- name: MarkMessageRead :one
 UPDATE messages
 SET read_at = NOW()
 WHERE id = $1 AND receiver_id = $2 AND read_at IS NULL
-RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at, media_url, media_type
 `
 
 type MarkMessageReadParams struct {
@@ -442,25 +456,21 @@ func (q *Queries) MarkMessageRead(ctx context.Context, arg MarkMessageReadParams
 		&i.CreatedAt,
 		&i.ReadAt,
 		&i.ExpiresAt,
+		&i.MediaUrl,
+		&i.MediaType,
 	)
 	return i, err
 }
 
-const updateMessage = `-- name: UpdateMessage :one
+const saveMessage = `-- name: SaveMessage :one
 UPDATE messages
-SET content = $3
-WHERE id = $1 AND sender_id = $2
-RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at
+SET expires_at = NULL
+WHERE id = $1
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at, media_url, media_type
 `
 
-type UpdateMessageParams struct {
-	ID       uuid.UUID `json:"id"`
-	SenderID uuid.UUID `json:"sender_id"`
-	Content  string    `json:"content"`
-}
-
-func (q *Queries) UpdateMessage(ctx context.Context, arg UpdateMessageParams) (Message, error) {
-	row := q.db.QueryRowContext(ctx, updateMessage, arg.ID, arg.SenderID, arg.Content)
+func (q *Queries) SaveMessage(ctx context.Context, id uuid.UUID) (Message, error) {
+	row := q.db.QueryRowContext(ctx, saveMessage, id)
 	var i Message
 	err := row.Scan(
 		&i.ID,
@@ -471,6 +481,47 @@ func (q *Queries) UpdateMessage(ctx context.Context, arg UpdateMessageParams) (M
 		&i.CreatedAt,
 		&i.ReadAt,
 		&i.ExpiresAt,
+		&i.MediaUrl,
+		&i.MediaType,
+	)
+	return i, err
+}
+
+const updateMessage = `-- name: UpdateMessage :one
+UPDATE messages
+SET content = $3, media_url = $4, media_type = $5
+WHERE id = $1 AND sender_id = $2
+RETURNING id, sender_id, receiver_id, content, is_read, created_at, read_at, expires_at, media_url, media_type
+`
+
+type UpdateMessageParams struct {
+	ID        uuid.UUID      `json:"id"`
+	SenderID  uuid.UUID      `json:"sender_id"`
+	Content   string         `json:"content"`
+	MediaUrl  sql.NullString `json:"media_url"`
+	MediaType sql.NullString `json:"media_type"`
+}
+
+func (q *Queries) UpdateMessage(ctx context.Context, arg UpdateMessageParams) (Message, error) {
+	row := q.db.QueryRowContext(ctx, updateMessage,
+		arg.ID,
+		arg.SenderID,
+		arg.Content,
+		arg.MediaUrl,
+		arg.MediaType,
+	)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.ReceiverID,
+		&i.Content,
+		&i.IsRead,
+		&i.CreatedAt,
+		&i.ReadAt,
+		&i.ExpiresAt,
+		&i.MediaUrl,
+		&i.MediaType,
 	)
 	return i, err
 }

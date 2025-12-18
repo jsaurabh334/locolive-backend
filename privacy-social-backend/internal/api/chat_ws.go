@@ -24,6 +24,7 @@ var upgrader = websocket.Upgrader{
 		allowedOrigins := []string{
 			"http://localhost:5173",
 			"http://localhost:3000",
+
 			"https://yourdomain.com", // Add your production domain
 		}
 

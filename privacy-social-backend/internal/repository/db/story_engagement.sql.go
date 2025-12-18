@@ -26,8 +26,10 @@ func (q *Queries) CountStoryReactions(ctx context.Context, storyID uuid.UUID) (i
 }
 
 const countStoryViews = `-- name: CountStoryViews :one
-SELECT COUNT(*) FROM story_views
-WHERE story_id = $1
+SELECT COUNT(sv.*) 
+FROM story_views sv
+JOIN stories s ON sv.story_id = s.id
+WHERE sv.story_id = $1 AND sv.user_id != s.user_id
 `
 
 func (q *Queries) CountStoryViews(ctx context.Context, storyID uuid.UUID) (int64, error) {
@@ -78,8 +80,8 @@ INSERT INTO story_views (
 ) VALUES (
   $1, $2
 ) ON CONFLICT (story_id, user_id) DO UPDATE
-SET viewed_at = now()
-RETURNING id, story_id, user_id, viewed_at
+SET viewed_at = story_views.viewed_at
+RETURNING id, story_id, user_id, viewed_at, view_count
 `
 
 type CreateStoryViewParams struct {
@@ -96,6 +98,7 @@ func (q *Queries) CreateStoryView(ctx context.Context, arg CreateStoryViewParams
 		&i.StoryID,
 		&i.UserID,
 		&i.ViewedAt,
+		&i.ViewCount,
 	)
 	return i, err
 }
@@ -165,10 +168,11 @@ func (q *Queries) GetStoryReactions(ctx context.Context, storyID uuid.UUID) ([]G
 }
 
 const getStoryViewers = `-- name: GetStoryViewers :many
-SELECT sv.id, sv.story_id, sv.user_id, sv.viewed_at, u.username, u.avatar_url
+SELECT sv.id, sv.story_id, sv.user_id, sv.viewed_at, sv.view_count, u.username, u.avatar_url
 FROM story_views sv
 JOIN users u ON sv.user_id = u.id
-WHERE sv.story_id = $1
+JOIN stories s ON sv.story_id = s.id
+WHERE sv.story_id = $1 AND sv.user_id != s.user_id
 ORDER BY sv.viewed_at DESC
 `
 
@@ -177,6 +181,7 @@ type GetStoryViewersRow struct {
 	StoryID   uuid.UUID      `json:"story_id"`
 	UserID    uuid.UUID      `json:"user_id"`
 	ViewedAt  time.Time      `json:"viewed_at"`
+	ViewCount int32          `json:"view_count"`
 	Username  string         `json:"username"`
 	AvatarUrl sql.NullString `json:"avatar_url"`
 }
@@ -196,6 +201,7 @@ func (q *Queries) GetStoryViewers(ctx context.Context, storyID uuid.UUID) ([]Get
 			&i.StoryID,
 			&i.UserID,
 			&i.ViewedAt,
+			&i.ViewCount,
 			&i.Username,
 			&i.AvatarUrl,
 		); err != nil {

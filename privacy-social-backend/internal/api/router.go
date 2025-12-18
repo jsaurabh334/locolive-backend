@@ -35,6 +35,7 @@ func (server *Server) setupRouter() {
 	// Stories
 	authRoutes.GET("/feed", server.getFeed)
 	authRoutes.POST("/stories", server.storyRateLimiter(), server.createStory)
+	authRoutes.GET("/stories/:id", server.getStory)
 	authRoutes.DELETE("/stories/:id", server.deleteUserStory)
 	authRoutes.GET("/stories/map", server.getStoriesMap)
 	authRoutes.GET("/stories/connections", server.getConnectionStories)
@@ -61,6 +62,7 @@ func (server *Server) setupRouter() {
 	authRoutes.PUT("/messages/read/:userId", server.markConversationRead)
 	authRoutes.DELETE("/messages/:id", server.deleteMessage)
 	authRoutes.PUT("/messages/:id", server.editMessage)
+	authRoutes.PUT("/messages/:id/save", server.saveMessage) // Save message to prevent expiry
 	authRoutes.DELETE("/conversations/:userId", server.deleteConversation)
 	authRoutes.POST("/messages/:id/reactions", server.addReaction)
 	authRoutes.DELETE("/messages/:id/reactions", server.removeReaction)

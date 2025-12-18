@@ -1,7 +1,7 @@
 -- name: TrackProfileView :one
 INSERT INTO profile_views (viewer_id, viewed_user_id, viewed_at)
 VALUES ($1, $2, NOW())
-ON CONFLICT (viewer_id, viewed_user_id, viewed_at) DO UPDATE
+ON CONFLICT (viewer_id, viewed_user_id) DO UPDATE
 SET viewed_at = NOW()
 RETURNING *;
 

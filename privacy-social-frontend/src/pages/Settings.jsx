@@ -15,7 +15,7 @@ const Settings = () => {
         <div className="min-h-screen bg-gradient-to-br from-background via-surface/30 to-background">
             {/* Floating Header */}
             <div className="sticky top-0 z-40 backdrop-blur-xl bg-background/80 border-b border-border/30">
-                <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+                <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 flex items-center gap-4">
                     <button
                         onClick={() => navigate(-1)}
                         className="p-2 rounded-full hover:bg-surface-hover transition-all hover:scale-105"
@@ -25,16 +25,16 @@ const Settings = () => {
                         </svg>
                     </button>
                     <div>
-                        <h1 className="text-2xl font-bold bg-gradient-to-r from-text-primary to-text-secondary bg-clip-text text-transparent">
+                        <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-text-primary to-text-secondary bg-clip-text text-transparent">
                             Settings
                         </h1>
-                        <p className="text-xs text-text-tertiary">Manage your privacy & preferences</p>
+                        <p className="text-[10px] md:text-xs text-text-tertiary">Manage your privacy & preferences</p>
                     </div>
                 </div>
             </div>
 
             {/* Single Scroll Layout */}
-            <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+            <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6 md:space-y-8">
                 {/* Privacy & Visibility Section */}
                 <PrivacySettings />
 
@@ -117,16 +117,24 @@ const PrivacySettings = () => {
                             <button
                                 key={option}
                                 onClick={() => handleChange('who_can_see_stories', option)}
-                                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${settings?.who_can_see_stories === option
-                                    ? 'bg-primary-500 text-white shadow-lg scale-105'
-                                    : 'bg-background/70 text-text-secondary hover:bg-surface-hover'
+                                className={`group px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${settings?.who_can_see_stories === option
+                                    ? 'bg-primary-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.4),inset_0_0_20px_rgba(255,255,255,0.1)] scale-110'
+                                    : 'bg-background/70 text-text-secondary hover:bg-surface-hover hover:scale-105'
                                     }`}
                             >
-                                {option === 'everyone' ? '🌍' : option === 'connections' ? '👥' : '🚫'}
+                                <span className={`inline-block text-base transition-transform duration-300 ${settings?.who_can_see_stories === option ? 'scale-125' : 'group-hover:scale-110'}`}>
+                                    {option === 'everyone' ? '🌍' : option === 'connections' ? '👥' : '🚫'}
+                                </span>
                                 <span className="block text-xs mt-1 capitalize">{option}</span>
                             </button>
                         ))}
                     </div>
+                    {/* Helper Text */}
+                    <p className="text-xs text-text-tertiary leading-relaxed px-1">
+                        {settings?.who_can_see_stories === 'everyone' && '🌍 Anyone nearby can discover and view your stories'}
+                        {settings?.who_can_see_stories === 'connections' && '👥 Only your connections can see your stories'}
+                        {settings?.who_can_see_stories === 'nobody' && '🚫 Your stories are hidden from everyone'}
+                    </p>
                 </div>
 
                 <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
@@ -142,16 +150,24 @@ const PrivacySettings = () => {
                             <button
                                 key={option}
                                 onClick={() => handleChange('who_can_message', option)}
-                                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${settings?.who_can_message === option
-                                    ? 'bg-primary-500 text-white shadow-lg scale-105'
-                                    : 'bg-background/70 text-text-secondary hover:bg-surface-hover'
+                                className={`group px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${settings?.who_can_message === option
+                                    ? 'bg-primary-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.4),inset_0_0_20px_rgba(255,255,255,0.1)] scale-110'
+                                    : 'bg-background/70 text-text-secondary hover:bg-surface-hover hover:scale-105'
                                     }`}
                             >
-                                {option === 'everyone' ? '🌍' : option === 'connections' ? '👥' : '🚫'}
+                                <span className={`inline-block text-base transition-transform duration-300 ${settings?.who_can_message === option ? 'scale-125' : 'group-hover:scale-110'}`}>
+                                    {option === 'everyone' ? '🌍' : option === 'connections' ? '👥' : '🚫'}
+                                </span>
                                 <span className="block text-xs mt-1 capitalize">{option}</span>
                             </button>
                         ))}
                     </div>
+                    {/* Helper Text */}
+                    <p className="text-xs text-text-tertiary leading-relaxed px-1">
+                        {settings?.who_can_message === 'everyone' && '🌍 Anyone can send you messages'}
+                        {settings?.who_can_message === 'connections' && '👥 Only your connections can message you'}
+                        {settings?.who_can_message === 'nobody' && '🚫 No one can send you messages'}
+                    </p>
                 </div>
 
                 <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
@@ -189,10 +205,11 @@ const PrivacySettings = () => {
     );
 };
 
-// Ghost Mode Toggle - Redesigned
+// Ghost Mode Toggle - Redesigned with Danger/Power Treatment
 const GhostModeToggle = () => {
     const { user, setAuth, updateUser } = useAuth();
     const queryClient = useQueryClient();
+    const [showConfirm, setShowConfirm] = useState(false);
 
     const toggleGhostMode = useMutation({
         mutationFn: (enabled) => apiClient.toggleGhostMode(enabled),
@@ -209,6 +226,7 @@ const GhostModeToggle = () => {
                 setAuth(response.data, localStorage.getItem('access_token'));
             }
             queryClient.invalidateQueries(['my-profile']);
+            setShowConfirm(false);
         },
         onError: (error, variables, context) => {
             console.error('Failed to toggle ghost mode:', error);
@@ -216,43 +234,89 @@ const GhostModeToggle = () => {
             if (context?.previousValue !== undefined) {
                 updateUser({ is_ghost_mode: context.previousValue });
             }
+            setShowConfirm(false);
         }
     });
 
     const handleToggle = (enabled) => {
-        console.log('Ghost Mode toggle clicked, new value:', enabled);
-        console.log('Current user.is_ghost_mode:', user?.is_ghost_mode);
-        toggleGhostMode.mutate(enabled);
+        if (enabled && !showConfirm) {
+            // Show confirmation for enabling ghost mode
+            setShowConfirm(true);
+        } else if (enabled && showConfirm) {
+            // Confirmed - proceed
+            console.log('Ghost Mode toggle clicked, new value:', enabled);
+            console.log('Current user.is_ghost_mode:', user?.is_ghost_mode);
+            toggleGhostMode.mutate(enabled);
+        } else {
+            // Disabling - no confirmation needed
+            console.log('Ghost Mode toggle clicked, new value:', enabled);
+            toggleGhostMode.mutate(enabled);
+        }
     };
 
     return (
-        <label className="flex items-center justify-between p-4 rounded-2xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 cursor-pointer hover:shadow-lg transition-all group">
-            <div className="flex items-center gap-3">
-                <span className="text-2xl">👻</span>
-                <div>
-                    <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-text-primary">Ghost Mode</p>
+        <div className="relative">
+            <label className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 group ${user?.is_ghost_mode
+                ? 'bg-gradient-to-br from-red-500/20 via-purple-500/20 to-pink-500/20 border-2 border-red-500/40 shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:shadow-[0_0_40px_rgba(239,68,68,0.4)]'
+                : 'bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 hover:border-purple-500/30 hover:shadow-lg'
+                }`}>
+                <div className="flex items-center gap-3">
+                    <span className={`text-2xl transition-transform duration-300 ${user?.is_ghost_mode ? 'animate-pulse scale-125' : 'group-hover:scale-110'}`}>
+                        👻
+                    </span>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-text-primary">Ghost Mode</p>
+                            {user?.is_ghost_mode && (
+                                <span className="px-2 py-0.5 text-xs font-bold bg-gradient-to-r from-red-500 to-purple-500 text-white rounded-full animate-pulse shadow-lg">
+                                    ACTIVE
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xs text-text-secondary">Become invisible on map & feed</p>
                         {user?.is_ghost_mode && (
-                            <span className="px-2 py-0.5 text-xs font-bold bg-purple-500 text-white rounded-full animate-pulse">
-                                ON
-                            </span>
+                            <p className="text-xs text-red-400 font-medium mt-1">⚠️ You're completely hidden</p>
                         )}
                     </div>
-                    <p className="text-xs text-text-secondary">Become invisible on map & feed</p>
                 </div>
-            </div>
-            <div className="relative">
-                <input
-                    type="checkbox"
-                    checked={!!user?.is_ghost_mode}
-                    onChange={(e) => handleToggle(e.target.checked)}
-                    disabled={toggleGhostMode.isPending}
-                    className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-surface-hover rounded-full peer peer-checked:bg-purple-500 transition-all"></div>
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-md"></div>
-            </div>
-        </label>
+                <div className="relative">
+                    <input
+                        type="checkbox"
+                        checked={!!user?.is_ghost_mode}
+                        onChange={(e) => handleToggle(e.target.checked)}
+                        disabled={toggleGhostMode.isPending}
+                        className="sr-only peer"
+                    />
+                    <div className={`w-11 h-6 rounded-full transition-all ${user?.is_ghost_mode
+                        ? 'bg-gradient-to-r from-red-500 to-purple-500 shadow-lg'
+                        : 'bg-surface-hover'
+                        }`}></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow-md"></div>
+                </div>
+            </label>
+
+            {/* Confirmation Tooltip */}
+            {showConfirm && (
+                <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-gradient-to-br from-red-500/90 to-purple-500/90 backdrop-blur-xl rounded-xl border border-red-500/50 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <p className="text-xs text-white font-semibold mb-2">⚠️ Enable Ghost Mode?</p>
+                    <p className="text-xs text-white/80 mb-3">You'll be completely invisible to everyone</p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => handleToggle(true)}
+                            className="flex-1 px-3 py-1.5 bg-white text-red-600 rounded-lg text-xs font-semibold hover:bg-white/90 transition-colors"
+                        >
+                            Confirm
+                        </button>
+                        <button
+                            onClick={() => setShowConfirm(false)}
+                            className="flex-1 px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-semibold hover:bg-white/30 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -351,19 +415,26 @@ const AccountSettings = ({ user }) => {
 
     return (
         <div className="space-y-6">
-            {/* Account Header */}
-            <div className="flex items-center gap-3">
+            {/* Account & Security Section Header */}
+            <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center shadow-lg">
                     <span className="text-xl">⚙️</span>
                 </div>
-                <div>
-                    <h2 className="text-lg font-bold text-text-primary">Account & Security</h2>
+                <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold text-text-primary">Account & Security</h2>
+                        {/* Security Status Indicator */}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-500/10 border border-green-500/30 rounded-full">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                            <span className="text-xs font-semibold text-green-500">Secure</span>
+                        </span>
+                    </div>
                     <p className="text-xs text-text-tertiary">Manage credentials & data</p>
                 </div>
             </div>
 
-            {/* Credentials Card */}
-            <div className="bg-surface/60 backdrop-blur-sm border border-border/50 rounded-3xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 space-y-3">
+            {/* Credentials Card with Border Glow */}
+            <div className="bg-surface/60 backdrop-blur-sm border-2 border-green-500/20 rounded-3xl p-6 shadow-[0_0_20px_rgba(34,197,94,0.15)] hover:shadow-[0_0_30px_rgba(34,197,94,0.25)] hover:border-green-500/30 transition-all duration-300 space-y-3">
                 <div className="flex items-center justify-between p-4 bg-background/50 rounded-2xl hover:bg-background/70 transition-all group">
                     <div className="flex items-center gap-3">
                         <span className="text-xl">📧</span>

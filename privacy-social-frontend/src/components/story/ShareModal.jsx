@@ -2,18 +2,17 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import apiService from '../../api/client';
 import Loader from '../ui/Loader';
+import { useConnections } from '../../features/connections/useConnections';
+
+import { useToast } from '../../context/ToastContext';
 
 const ShareModal = ({ storyId, onClose }) => {
+    const toast = useToast();
+    const { data: connections, isLoading } = useConnections();
+
     const [selectedUsers, setSelectedUsers] = useState([]);
     const [isSharing, setIsSharing] = useState(false);
-
-    const { data: connections, isLoading } = useQuery({
-        queryKey: ['connections'],
-        queryFn: async () => {
-            const response = await apiService.listConnections();
-            return response.data;
-        }
-    });
+    const [error, setError] = useState(null);
 
     const toggleUser = (userId) => {
         setSelectedUsers(prev =>
@@ -27,15 +26,18 @@ const ShareModal = ({ storyId, onClose }) => {
         if (selectedUsers.length === 0) return;
 
         setIsSharing(true);
+        setError(null);
         try {
             await apiService.shareStory({
                 story_id: storyId,
                 user_ids: selectedUsers
             });
+            toast.success("Story shared successfully!");
             onClose();
         } catch (error) {
-            console.error('Failed to share story:', error);
-            alert('Failed to share story');
+            // console.error('Failed to share story:', error);
+            setError('Failed to share story. Please try again.');
+            toast.error("Failed to share story.");
         } finally {
             setIsSharing(false);
         }

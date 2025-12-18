@@ -2,9 +2,11 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 
 	"privacy-social-backend/internal/repository/db"
 )
@@ -27,6 +29,38 @@ func (server *Server) viewStory(ctx *gin.Context) {
 		return
 	}
 
+	// Check if user is the owner of the story. If so, do not record a view.
+	// We need to fetch the story first to check ownership.
+	story, err := server.store.GetStoryByID(ctx, storyID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "story not found"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	// Check if blocked
+	isBlocked, err := server.store.IsUserBlocked(ctx, db.IsUserBlockedParams{
+		BlockerID: story.UserID,
+		BlockedID: authPayload.UserID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+	if isBlocked {
+		// Privacy: Act as if story doesn't exist or just forbid
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	if story.UserID == authPayload.UserID {
+		// Do not record view for own story
+		ctx.JSON(http.StatusOK, gin.H{"message": "own story viewed"})
+		return
+	}
+
 	view, err := server.store.CreateStoryView(ctx, db.CreateStoryViewParams{
 		StoryID: storyID,
 		UserID:  authPayload.UserID,
@@ -34,6 +68,22 @@ func (server *Server) viewStory(ctx *gin.Context) {
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
+	}
+
+	// Notify story owner via WebSocket
+	event := struct {
+		Type    string       `json:"type"`
+		Payload db.StoryView `json:"payload"`
+	}{
+		Type:    "story_viewed",
+		Payload: view,
+	}
+
+	eventBytes, err := json.Marshal(event)
+	if err == nil {
+		server.hub.SendToUser(story.UserID, eventBytes)
+	} else {
+		log.Error().Err(err).Msg("Failed to marshal story_viewed event")
 	}
 
 	ctx.JSON(http.StatusOK, view)
@@ -75,23 +125,23 @@ func (server *Server) getStoryViewers(ctx *gin.Context) {
 		return
 	}
 
+	// Viewers are now filtered by the SQL query to exclude the owner
 	ctx.JSON(http.StatusOK, viewers)
 }
 
-type reactToStoryRequest struct {
-	StoryID string `uri:"id" binding:"required,uuid"`
-	Emoji   string `json:"emoji" binding:"required,min=1,max=10"`
+type createReactionRequest struct {
+	Emoji string `json:"emoji" binding:"required,min=1,max=10"`
 }
 
 // reactToStory adds or updates a reaction to a story
 func (server *Server) reactToStory(ctx *gin.Context) {
-	var uriReq reactToStoryRequest
+	var uriReq viewStoryRequest
 	if err := ctx.ShouldBindUri(&uriReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 
-	var bodyReq reactToStoryRequest
+	var bodyReq createReactionRequest
 	if err := ctx.ShouldBindJSON(&bodyReq); err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return

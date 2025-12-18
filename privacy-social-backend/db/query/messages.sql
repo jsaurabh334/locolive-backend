@@ -3,9 +3,11 @@ INSERT INTO messages (
   sender_id,
   receiver_id,
   content,
+  media_url,
+  media_type,
   expires_at
 ) VALUES (
-  $1, $2, $3, $4
+  $1, $2, $3, $4, $5, $6
 ) RETURNING *;
 
 -- name: ListMessages :many
@@ -45,8 +47,14 @@ WHERE id = $1 AND sender_id = $2;
 
 -- name: UpdateMessage :one
 UPDATE messages
-SET content = $3
+SET content = $3, media_url = $4, media_type = $5
 WHERE id = $1 AND sender_id = $2
+RETURNING *;
+
+-- name: SaveMessage :one
+UPDATE messages
+SET expires_at = NULL
+WHERE id = $1
 RETURNING *;
 
 -- name: GetMessage :one

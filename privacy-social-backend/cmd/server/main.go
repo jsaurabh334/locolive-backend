@@ -51,7 +51,7 @@ func main() {
 	// Start background workers
 	cleanupWorker := worker.NewCleanupWorker(store)
 	cleanupWorker.Start()
-	cleanupWorker.StartCrossingDetector()
+	// cleanupWorker.StartCrossingDetector() // Disabled: Switched to Redis-based Realtime Detection
 
 	server, err := api.NewServer(config, store)
 	if err != nil {
