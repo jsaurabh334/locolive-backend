@@ -113,13 +113,15 @@ SET
   bio = COALESCE(sqlc.narg('bio'), bio),
   banner_url = COALESCE(sqlc.narg('banner_url'), banner_url),
   theme = COALESCE(sqlc.narg('theme'), theme),
-  profile_visibility = COALESCE(sqlc.narg('profile_visibility'), profile_visibility)
+  profile_visibility = COALESCE(sqlc.narg('profile_visibility'), profile_visibility),
+  website_url = COALESCE(sqlc.narg('website_url'), website_url),
+  links = COALESCE(sqlc.narg('links'), links)
 WHERE id = $1
-RETURNING id, username, full_name, avatar_url, bio, banner_url, theme, profile_visibility, created_at;
+RETURNING id, username, full_name, avatar_url, bio, banner_url, theme, profile_visibility, website_url, links, created_at;
 
 -- name: GetUserProfile :one
 SELECT 
-  u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.email, u.is_ghost_mode, u.created_at, u.is_premium, u.last_active_at,
+  u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.email, u.is_ghost_mode, u.website_url, u.links, u.created_at, u.is_premium, u.last_active_at,
   (SELECT COUNT(*) FROM stories WHERE stories.user_id = u.id) as story_count,
   (SELECT COUNT(*) FROM connections WHERE connections.requester_id = u.id OR connections.target_id = u.id) as connection_count,
   CASE

@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -60,5 +61,17 @@ func NewServer(config config.Config, store repository.Store) (*Server, error) {
 
 // Start runs the HTTP server on a specific address
 func (server *Server) Start(address string) error {
+	certFile := "certs/server.crt"
+	keyFile := "certs/server.key"
+
+	// Check if certificates exist
+	if _, err := os.Stat(certFile); err == nil {
+		if _, err := os.Stat(keyFile); err == nil {
+			fmt.Printf("Starting HTTPS server on %s\n", address)
+			return server.router.RunTLS(address, certFile, keyFile)
+		}
+	}
+
+	fmt.Printf("Starting HTTP server on %s\n", address)
 	return server.router.Run(address)
 }

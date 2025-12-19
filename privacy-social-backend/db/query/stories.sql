@@ -7,18 +7,32 @@ INSERT INTO stories (
   geohash,
   geom,
   is_anonymous,
+  show_location,
   is_premium,
   expires_at
 ) VALUES (
-  @user_id, @media_url, @media_type, @caption, @geohash, ST_SetSRID(ST_MakePoint(@lng::float8, @lat::float8), 4326), @is_anonymous, @is_premium, @expires_at
-) RETURNING *;
+  @user_id, @media_url, @media_type, @caption, @geohash, ST_SetSRID(ST_MakePoint(@lng::float8, @lat::float8), 4326), @is_anonymous, @show_location, @is_premium, @expires_at
+) RETURNING *, ST_Y(geom::geometry) as lat, ST_X(geom::geometry) as lng;
 
 -- name: GetStoryByID :one
-SELECT * FROM stories
+SELECT *, ST_Y(geom::geometry) as lat, ST_X(geom::geometry) as lng FROM stories
 WHERE id = $1 LIMIT 1;
 
+-- name: UpdateStory :one
+UPDATE stories
+SET 
+  caption = COALESCE(sqlc.narg('caption'), caption),
+  is_anonymous = COALESCE(sqlc.narg('is_anonymous'), is_anonymous),
+  show_location = COALESCE(sqlc.narg('show_location'), show_location)
+WHERE id = $1 
+  AND user_id = $2
+  AND created_at > NOW() - INTERVAL '15 minutes'
+  AND expires_at > NOW()
+RETURNING *, ST_Y(geom::geometry) as lat, ST_X(geom::geometry) as lng;
+
 -- name: GetStoriesWithinRadius :many
-SELECT s.*, u.username, u.avatar_url, u.is_premium
+SELECT s.*, u.username, u.avatar_url, u.is_premium,
+       ST_Y(s.geom::geometry) as lat, ST_X(s.geom::geometry) as lng
 FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE 
@@ -77,7 +91,8 @@ ORDER BY
 
 -- name: GetConnectionStories :many
 -- Get stories from connected users (not limited by radius)
-SELECT s.*, u.username, u.avatar_url, u.is_premium
+SELECT s.*, u.username, u.avatar_url, u.is_premium,
+       ST_Y(s.geom::geometry) as lat, ST_X(s.geom::geometry) as lng
 FROM stories s
 JOIN users u ON s.user_id = u.id
 JOIN connections c ON 
@@ -100,7 +115,8 @@ ORDER BY s.created_at DESC;
 
 -- name: GetStoriesInBounds :many
 -- Get stories within a bounding box for map view
-SELECT s.*, u.username, u.avatar_url 
+SELECT s.*, u.username, u.avatar_url,
+       ST_Y(s.geom::geometry) as lat, ST_X(s.geom::geometry) as lng
 FROM stories s
 JOIN users u ON s.user_id = u.id
 WHERE s.geom && ST_MakeEnvelope(@west::float8, @south::float8, @east::float8, @north::float8, 4326)

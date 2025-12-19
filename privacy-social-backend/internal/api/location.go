@@ -60,9 +60,6 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 	// Privacy: Expiry
 	expiresAt := now.Add(locationTTL)
 
-	// Privacy: Expiry
-	// expiresAt defined above
-
 	_, err := server.store.CreateLocation(ctx, db.CreateLocationParams{
 		UserID:     authPayload.UserID,
 		Geohash:    hash,
@@ -71,9 +68,6 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 		TimeBucket: bucketTime,
 		ExpiresAt:  expiresAt,
 	})
-
-	// Wait, I can't check generated code easily without reading it.
-	// Better to update the SQL query to use named parameters @lat, @lng.
 
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -87,10 +81,7 @@ func (server *Server) updateLocation(ctx *gin.Context) {
 		log.Error().Err(err).Msg("Failed to update user activity on location ping")
 	}
 
-	// [NEW] Trigger Redis Geo Crossing Detection
-	// We run this asynchronously to not block the response?
-	// Or synchronously since it's fast (Redis)?
-	// Let's do it synchronously to ensure it works, Redis is fast.
+	// Trigger Redis Geo Crossing Detection (synchronous - Redis is fast)
 	if err := server.location.UpdateUserLocation(ctx, authPayload.UserID, req.Latitude, req.Longitude); err != nil {
 		log.Error().Err(err).Msg("Failed to update redis location service")
 	}

@@ -10,35 +10,49 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/sqlc-dev/pqtype"
+
 	"privacy-social-backend/internal/repository/db"
 	"privacy-social-backend/internal/token"
 )
 
 const profileCacheTTL = 10 * time.Minute
 
+type UserLink struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
 // ProfileResponse structure matching updated schema
 type ProfileResponse struct {
-	ID                uuid.UUID `json:"id"`
-	Username          string    `json:"username"`
-	FullName          string    `json:"full_name"`
-	AvatarUrl         string    `json:"avatar_url"`
-	Bio               string    `json:"bio"`
-	BannerUrl         string    `json:"banner_url"`
-	Theme             string    `json:"theme"`
-	ProfileVisibility string    `json:"profile_visibility"`
-	Email             string    `json:"email"`
-	IsGhostMode       bool      `json:"is_ghost_mode"`
-	IsPremium         bool      `json:"is_premium"`
-	ActivityStreak    int       `json:"activity_streak"`
-	StoryCount        int64     `json:"story_count"`
-	ConnectionCount   int64     `json:"connection_count"`
-	LastActiveAt      time.Time `json:"last_active_at"`
-	CreatedAt         time.Time `json:"created_at"`
-	VisibilityStatus  string    `json:"visibility_status"`
+	ID                uuid.UUID  `json:"id"`
+	Username          string     `json:"username"`
+	FullName          string     `json:"full_name"`
+	AvatarUrl         string     `json:"avatar_url"`
+	Bio               string     `json:"bio"`
+	BannerUrl         string     `json:"banner_url"`
+	Theme             string     `json:"theme"`
+	ProfileVisibility string     `json:"profile_visibility"`
+	Email             string     `json:"email"`
+	IsGhostMode       bool       `json:"is_ghost_mode"`
+	IsPremium         bool       `json:"is_premium"`
+	ActivityStreak    int        `json:"activity_streak"`
+	StoryCount        int64      `json:"story_count"`
+	ConnectionCount   int64      `json:"connection_count"`
+	LastActiveAt      time.Time  `json:"last_active_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	VisibilityStatus  string     `json:"visibility_status"`
+	WebsiteURL        string     `json:"website_url"`
+	Links             []UserLink `json:"links"`
 }
 
 func mapProfileResponse(p db.GetUserProfileRow) ProfileResponse {
 	streak, _ := p.ActivityStreak.(int64)
+
+	var links []UserLink
+	if len(p.Links) > 0 {
+		json.Unmarshal(p.Links, &links)
+	}
 
 	return ProfileResponse{
 		ID:                p.ID,
@@ -58,6 +72,8 @@ func mapProfileResponse(p db.GetUserProfileRow) ProfileResponse {
 		LastActiveAt:      p.LastActiveAt.Time,
 		CreatedAt:         p.CreatedAt,
 		VisibilityStatus:  p.VisibilityStatus,
+		WebsiteURL:        p.WebsiteUrl.String,
+		Links:             links,
 	}
 }
 
@@ -150,13 +166,15 @@ func (server *Server) getMyProfile(ctx *gin.Context) {
 }
 
 type updateUserProfileRequest struct {
-	FullName          string `json:"full_name"`
-	Username          string `json:"username"`
-	Bio               string `json:"bio"`
-	AvatarUrl         string `json:"avatar_url"`
-	BannerUrl         string `json:"banner_url"`
-	Theme             string `json:"theme"`
-	ProfileVisibility string `json:"profile_visibility"`
+	FullName          string     `json:"full_name"`
+	Username          string     `json:"username"`
+	Bio               string     `json:"bio"`
+	AvatarUrl         string     `json:"avatar_url"`
+	BannerUrl         string     `json:"banner_url"`
+	Theme             string     `json:"theme"`
+	ProfileVisibility string     `json:"profile_visibility"`
+	WebsiteURL        string     `json:"website_url"`
+	Links             []UserLink `json:"links"`
 }
 
 func (server *Server) updateProfile(ctx *gin.Context) {
@@ -176,6 +194,12 @@ func (server *Server) updateProfile(ctx *gin.Context) {
 		BannerUrl:         sql.NullString{String: req.BannerUrl, Valid: req.BannerUrl != ""},
 		Theme:             sql.NullString{String: req.Theme, Valid: req.Theme != ""},
 		ProfileVisibility: sql.NullString{String: req.ProfileVisibility, Valid: req.ProfileVisibility != ""},
+		WebsiteUrl:        sql.NullString{String: req.WebsiteURL, Valid: true},
+	}
+
+	if req.Links != nil {
+		linksJSON, _ := json.Marshal(req.Links)
+		arg.Links = pqtype.NullRawMessage{RawMessage: linksJSON, Valid: true}
 	}
 
 	user, err := server.store.UpdateUserProfile(ctx, arg)
@@ -190,15 +214,17 @@ func (server *Server) updateProfile(ctx *gin.Context) {
 
 	// Return updated profile structure (simplified for update response)
 	rsp := struct {
-		ID                uuid.UUID `json:"id"`
-		Username          string    `json:"username"`
-		FullName          string    `json:"full_name"`
-		Bio               string    `json:"bio"`
-		AvatarUrl         string    `json:"avatar_url"`
-		BannerUrl         string    `json:"banner_url"`
-		Theme             string    `json:"theme"`
-		ProfileVisibility string    `json:"profile_visibility"`
-		CreatedAt         time.Time `json:"created_at"`
+		ID                uuid.UUID  `json:"id"`
+		Username          string     `json:"username"`
+		FullName          string     `json:"full_name"`
+		Bio               string     `json:"bio"`
+		AvatarUrl         string     `json:"avatar_url"`
+		BannerUrl         string     `json:"banner_url"`
+		Theme             string     `json:"theme"`
+		ProfileVisibility string     `json:"profile_visibility"`
+		WebsiteUrl        string     `json:"website_url"`
+		Links             []UserLink `json:"links"`
+		CreatedAt         time.Time  `json:"created_at"`
 	}{
 		ID:                user.ID,
 		Username:          user.Username,
@@ -208,7 +234,12 @@ func (server *Server) updateProfile(ctx *gin.Context) {
 		BannerUrl:         user.BannerUrl.String,
 		Theme:             user.Theme.String,
 		ProfileVisibility: user.ProfileVisibility.String,
+		WebsiteUrl:        user.WebsiteUrl.String,
 		CreatedAt:         user.CreatedAt,
+	}
+
+	if len(user.Links) > 0 {
+		json.Unmarshal(user.Links, &rsp.Links)
 	}
 
 	ctx.JSON(http.StatusOK, rsp)

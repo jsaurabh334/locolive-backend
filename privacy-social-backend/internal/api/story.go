@@ -23,12 +23,13 @@ const (
 )
 
 type createStoryRequest struct {
-	MediaURL    string  `json:"media_url" binding:"required,url"`
-	MediaType   string  `json:"media_type" binding:"required,oneof=image video text"`
-	Latitude    float64 `json:"latitude" binding:"required,min=-90,max=90"`
-	Longitude   float64 `json:"longitude" binding:"required,min=-180,max=180"`
-	Caption     string  `json:"caption"`
-	IsAnonymous bool    `json:"is_anonymous"`
+	MediaURL     string  `json:"media_url" binding:"required"`
+	MediaType    string  `json:"media_type" binding:"required,oneof=image video text"`
+	Latitude     float64 `json:"latitude" binding:"required,min=-90,max=90"`
+	Longitude    float64 `json:"longitude" binding:"required,min=-180,max=180"`
+	Caption      string  `json:"caption"`
+	IsAnonymous  bool    `json:"is_anonymous"`
+	ShowLocation bool    `json:"show_location"`
 }
 
 func (server *Server) createStory(ctx *gin.Context) {
@@ -46,16 +47,23 @@ func (server *Server) createStory(ctx *gin.Context) {
 	val := server.safety.ValidateUserMovement(ctx, authPayload.UserID.String(), req.Latitude, req.Longitude)
 	if !val.Allowed {
 		if val.ShouldBan {
-			// Shadow ban the user (silently)
-			server.store.BanUser(ctx, db.BanUserParams{
-				ID:             authPayload.UserID,
-				IsShadowBanned: true,
-			})
-			log.Warn().Str("user_id", authPayload.UserID.String()).Msg("User shadow-banned for fake GPS")
+			// In development (localhost), we just log the warning instead of banning
+			// to avoid issues when users switch between real and mock locations.
+			log.Warn().
+				Str("user_id", authPayload.UserID.String()).
+				Float64("lat", req.Latitude).
+				Float64("lng", req.Longitude).
+				Msg("Fake GPS detected (Dev Bypass: User not banned)")
+
+			/*
+				// Production logic: Shadow ban the user (silently)
+				server.store.BanUser(ctx, db.BanUserParams{
+					ID:             authPayload.UserID,
+					IsShadowBanned: true,
+				})
+				log.Warn().Str("user_id", authPayload.UserID.String()).Msg("User shadow-banned for fake GPS")
+			*/
 		}
-		// If simply not allowed but not banned, return error?
-		// For Fake GPS (Speed > 1000km/h), ShouldBan is always true.
-		// We continue execution to maintain the "Shadow" illusion (story is created but user is banned, so nobody sees it)
 	}
 
 	// Get user to check premium status
@@ -84,16 +92,17 @@ func (server *Server) createStory(ctx *gin.Context) {
 	}
 
 	story, err := server.store.CreateStory(ctx, db.CreateStoryParams{
-		UserID:      authPayload.UserID,
-		MediaUrl:    req.MediaURL,
-		MediaType:   req.MediaType,
-		Caption:     captionNull,
-		Geohash:     hash,
-		Lng:         req.Longitude,
-		Lat:         req.Latitude,
-		IsAnonymous: req.IsAnonymous,
-		IsPremium:   sql.NullBool{Bool: isPremium, Valid: true},
-		ExpiresAt:   expiresAt,
+		UserID:       authPayload.UserID,
+		MediaUrl:     req.MediaURL,
+		MediaType:    req.MediaType,
+		Caption:      captionNull,
+		Geohash:      hash,
+		Lng:          req.Longitude,
+		Lat:          req.Latitude,
+		IsAnonymous:  req.IsAnonymous,
+		ShowLocation: req.ShowLocation,
+		IsPremium:    sql.NullBool{Bool: isPremium, Valid: true},
+		ExpiresAt:    expiresAt,
 	})
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -116,7 +125,7 @@ func (server *Server) createStory(ctx *gin.Context) {
 	userGeohash := truncatedGeohash(req.Latitude, req.Longitude, 5)
 	server.invalidateFeedCache(userGeohash)
 
-	ctx.JSON(http.StatusCreated, toStoryResponseFromStory(story))
+	ctx.JSON(http.StatusCreated, toStoryResponseFromCreate(story))
 }
 
 type getFeedRequest struct {
@@ -249,6 +258,74 @@ func (server *Server) deleteUserStory(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "story deleted successfully"})
 }
 
+type updateStoryRequest struct {
+	Caption      *string `json:"caption"`
+	IsAnonymous  *bool   `json:"is_anonymous"`
+	ShowLocation *bool   `json:"show_location"`
+}
+
+// updateStory allows users to edit their story within 15 minutes of posting
+func (server *Server) updateStory(ctx *gin.Context) {
+	storyID, err := uuid.Parse(ctx.Param("id"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	var req updateStoryRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
+
+	// Prepare nullable parameters for SQL
+	var captionArg sql.NullString
+	if req.Caption != nil {
+		captionArg = sql.NullString{String: *req.Caption, Valid: true}
+	}
+
+	var isAnonymousArg sql.NullBool
+	if req.IsAnonymous != nil {
+		isAnonymousArg = sql.NullBool{Bool: *req.IsAnonymous, Valid: true}
+	}
+
+	var showLocationArg sql.NullBool
+	if req.ShowLocation != nil {
+		showLocationArg = sql.NullBool{Bool: *req.ShowLocation, Valid: true}
+	}
+
+	// Update the story
+	story, err := server.store.UpdateStory(ctx, db.UpdateStoryParams{
+		ID:           storyID,
+		UserID:       authPayload.UserID,
+		Caption:      captionArg,
+		IsAnonymous:  isAnonymousArg,
+		ShowLocation: showLocationArg,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			ctx.JSON(http.StatusForbidden, gin.H{"error": "story not found, expired, or edit window closed (15 minutes)"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	// Invalidate feed cache
+	userGeohash := story.Geohash
+	if len(userGeohash) > 5 {
+		userGeohash = userGeohash[:5]
+	}
+	server.invalidateFeedCache(userGeohash)
+
+	// Convert to response
+	rsp := toStoryResponseFromUpdate(story)
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
 // getConnectionStories returns stories from connected users, ignoring radius
 func (server *Server) getConnectionStories(ctx *gin.Context) {
 	authPayload := ctx.MustGet(authorizationPayloadKey).(*token.Payload)
@@ -309,7 +386,7 @@ func (server *Server) getStory(ctx *gin.Context) {
 	}
 
 	// Convert to response DTO
-	rsp := toStoryResponseFromStory(story)
+	rsp := toStoryResponseFromGet(story)
 
 	// Fetch author details since they aren't in the partial story object
 	user, err := server.store.GetUserByID(ctx, story.UserID)

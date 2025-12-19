@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -90,16 +92,15 @@ func (server *Server) getCrossings(ctx *gin.Context) {
 	}
 
 	// Sort by Recent first
-	// We need to implement sort manually or just bubble sort since N is small
-	// Or use sort.Slice
-	// To use sort.Slice we need to import "sort"
-	// Since I cannot easy add imports in replace_file without seeing the imports,
-	// I will assume "sort" is NOT imported and adding it is risky if I don't see the top.
-	// Wait, I viewed the file. "sort" is NOT imported.
-	// I will just use a simple bubble sort or similar, or I can add the import in a separate step.
-	// Actually, aggregation implicitly handles the content. Sorting is nice but maybe not strict "required" for this specific "deduplication" task.
-	// But list *should* be sorted.
-	// I'll add "sort" import first.
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].LastCrossingAt.After(response[j].LastCrossingAt)
+	})
 
-	ctx.JSON(http.StatusOK, response) // Placeholder until I sort
+	// Cache the result
+	marshaled, err := json.Marshal(response)
+	if err == nil {
+		server.redis.Set(context.Background(), cacheKey, marshaled, crossingsCacheTTL)
+	}
+
+	ctx.JSON(http.StatusOK, response)
 }

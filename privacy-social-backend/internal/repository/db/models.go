@@ -7,6 +7,7 @@ package db
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -231,6 +232,22 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type ArchivedStory struct {
+	ID                uuid.UUID      `json:"id"`
+	UserID            uuid.UUID      `json:"user_id"`
+	StoryID           uuid.UUID      `json:"story_id"`
+	MediaUrl          string         `json:"media_url"`
+	MediaType         string         `json:"media_type"`
+	Caption           sql.NullString `json:"caption"`
+	Geohash           string         `json:"geohash"`
+	Geom              interface{}    `json:"geom"`
+	IsAnonymous       sql.NullBool   `json:"is_anonymous"`
+	ShowLocation      sql.NullBool   `json:"show_location"`
+	OriginalCreatedAt time.Time      `json:"original_created_at"`
+	ArchivedAt        sql.NullTime   `json:"archived_at"`
+	CreatedAt         sql.NullTime   `json:"created_at"`
+}
+
 type BlockedUser struct {
 	ID        uuid.UUID    `json:"id"`
 	BlockerID uuid.UUID    `json:"blocker_id"`
@@ -351,6 +368,7 @@ type Story struct {
 	CreatedAt    time.Time         `json:"created_at"`
 	IsAnonymous  bool              `json:"is_anonymous"`
 	IsPremium    sql.NullBool      `json:"is_premium"`
+	ShowLocation bool              `json:"show_location"`
 }
 
 type StoryMention struct {
@@ -377,27 +395,29 @@ type StoryView struct {
 }
 
 type User struct {
-	ID                     uuid.UUID      `json:"id"`
-	Phone                  string         `json:"phone"`
-	PasswordHash           string         `json:"password_hash"`
-	Username               string         `json:"username"`
-	FullName               string         `json:"full_name"`
-	AvatarUrl              sql.NullString `json:"avatar_url"`
-	Bio                    sql.NullString `json:"bio"`
-	Role                   UserRole       `json:"role"`
-	TrustLevel             int32          `json:"trust_level"`
-	IsVerified             bool           `json:"is_verified"`
-	IsShadowBanned         bool           `json:"is_shadow_banned"`
-	LastActiveAt           sql.NullTime   `json:"last_active_at"`
-	CreatedAt              time.Time      `json:"created_at"`
-	IsGhostMode            bool           `json:"is_ghost_mode"`
-	ActivityStreak         sql.NullInt32  `json:"activity_streak"`
-	StreakUpdatedAt        sql.NullTime   `json:"streak_updated_at"`
-	IsPremium              sql.NullBool   `json:"is_premium"`
-	StreakFreezesRemaining int32          `json:"streak_freezes_remaining"`
-	BoostExpiresAt         sql.NullTime   `json:"boost_expires_at"`
-	BannerUrl              sql.NullString `json:"banner_url"`
-	Theme                  sql.NullString `json:"theme"`
-	ProfileVisibility      sql.NullString `json:"profile_visibility"`
-	Email                  sql.NullString `json:"email"`
+	ID                     uuid.UUID       `json:"id"`
+	Phone                  string          `json:"phone"`
+	PasswordHash           string          `json:"password_hash"`
+	Username               string          `json:"username"`
+	FullName               string          `json:"full_name"`
+	AvatarUrl              sql.NullString  `json:"avatar_url"`
+	Bio                    sql.NullString  `json:"bio"`
+	Role                   UserRole        `json:"role"`
+	TrustLevel             int32           `json:"trust_level"`
+	IsVerified             bool            `json:"is_verified"`
+	IsShadowBanned         bool            `json:"is_shadow_banned"`
+	LastActiveAt           sql.NullTime    `json:"last_active_at"`
+	CreatedAt              time.Time       `json:"created_at"`
+	IsGhostMode            bool            `json:"is_ghost_mode"`
+	ActivityStreak         sql.NullInt32   `json:"activity_streak"`
+	StreakUpdatedAt        sql.NullTime    `json:"streak_updated_at"`
+	IsPremium              sql.NullBool    `json:"is_premium"`
+	StreakFreezesRemaining int32           `json:"streak_freezes_remaining"`
+	BoostExpiresAt         sql.NullTime    `json:"boost_expires_at"`
+	BannerUrl              sql.NullString  `json:"banner_url"`
+	Theme                  sql.NullString  `json:"theme"`
+	ProfileVisibility      sql.NullString  `json:"profile_visibility"`
+	Email                  sql.NullString  `json:"email"`
+	WebsiteUrl             sql.NullString  `json:"website_url"`
+	Links                  json.RawMessage `json:"links"`
 }

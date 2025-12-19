@@ -145,7 +145,11 @@ func (s *RedisLocationService) processCrossings(ctx context.Context, userID uuid
 		// Notify User 2
 		s.createNotification(ctx, targetUserID, userID, crossing.ID)
 
-		// 8. Set Dedup Key
+		// 8. Invalidate crossings cache for both users
+		s.invalidateCrossingsCache(ctx, userID)
+		s.invalidateCrossingsCache(ctx, targetUserID)
+
+		// 9. Set Dedup Key
 		s.redis.Set(ctx, dedupKey, "1", crossingTTL)
 	}
 }
@@ -209,4 +213,10 @@ func (s *RedisLocationService) createNotification(ctx context.Context, recipient
 		log.Error().Err(err).Msg("failed to create notification for crossing")
 	}
 	// Note: We could trigger WebSocket here if we had access to hub
+}
+
+// invalidateCrossingsCache removes the cached crossings for a user
+func (s *RedisLocationService) invalidateCrossingsCache(ctx context.Context, userID uuid.UUID) {
+	cacheKey := "crossings:v3:" + userID.String()
+	s.redis.Del(ctx, cacheKey)
 }

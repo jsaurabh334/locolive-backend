@@ -36,9 +36,15 @@ func (server *Server) setupRouter() {
 	authRoutes.GET("/feed", server.getFeed)
 	authRoutes.POST("/stories", server.storyRateLimiter(), server.createStory)
 	authRoutes.GET("/stories/:id", server.getStory)
+	authRoutes.PUT("/stories/:id", server.updateStory)
 	authRoutes.DELETE("/stories/:id", server.deleteUserStory)
 	authRoutes.GET("/stories/map", server.getStoriesMap)
 	authRoutes.GET("/stories/connections", server.getConnectionStories)
+
+	// Archive Stories
+	authRoutes.POST("/stories/:id/archive", server.archiveStory)
+	authRoutes.GET("/stories/archived", server.getArchivedStories)
+	authRoutes.DELETE("/stories/archived/:id", server.deleteArchivedStory)
 
 	authRoutes.GET("/connections", server.listConnections)
 	authRoutes.GET("/connections/suggested", server.getSuggestedConnections)

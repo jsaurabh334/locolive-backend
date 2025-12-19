@@ -54,3 +54,9 @@ func (server *Server) setCache(key string, data []byte, ttl time.Duration) {
 func (server *Server) getCache(key string) (string, error) {
 	return server.redis.Get(context.Background(), key).Result()
 }
+
+// invalidateCrossingsCache removes the cached crossings for a user
+func (server *Server) invalidateCrossingsCache(userID uuid.UUID) {
+	cacheKey := "crossings:v3:" + userID.String()
+	server.redis.Del(context.Background(), cacheKey)
+}

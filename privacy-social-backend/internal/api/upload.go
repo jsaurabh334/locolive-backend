@@ -39,9 +39,8 @@ func (server *Server) uploadFile(ctx *gin.Context) {
 		return
 	}
 
-	// Return public URL (assuming server runs on port 8080)
-	// In production, this would be a full URL or relative path handled by frontend
-	publicURL := fmt.Sprintf("http://localhost:8080/uploads/%s", newFilename)
+	// Return public URL (relative for proxy support)
+	publicURL := fmt.Sprintf("/api/uploads/%s", newFilename)
 
 	ctx.JSON(http.StatusOK, uploadResponse{
 		URL: publicURL,

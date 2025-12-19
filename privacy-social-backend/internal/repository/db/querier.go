@@ -12,9 +12,11 @@ import (
 )
 
 type Querier interface {
+	ArchiveStory(ctx context.Context, arg ArchiveStoryParams) (ArchivedStory, error)
 	BanUser(ctx context.Context, arg BanUserParams) (User, error)
 	BlockUser(ctx context.Context, arg BlockUserParams) (BlockedUser, error)
 	BoostUser(ctx context.Context, arg BoostUserParams) (User, error)
+	CountArchivedStories(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountConnectionRequestsToday(ctx context.Context, requesterID uuid.UUID) (int64, error)
 	CountCrossingsToday(ctx context.Context, userID1 uuid.UUID) (int64, error)
 	CountStoryReactions(ctx context.Context, storyID uuid.UUID) (int64, error)
@@ -29,7 +31,7 @@ type Querier interface {
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error)
 	CreateReport(ctx context.Context, arg CreateReportParams) (Report, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
-	CreateStory(ctx context.Context, arg CreateStoryParams) (Story, error)
+	CreateStory(ctx context.Context, arg CreateStoryParams) (CreateStoryRow, error)
 	CreateStoryMention(ctx context.Context, arg CreateStoryMentionParams) (StoryMention, error)
 	// Story Reactions
 	CreateStoryReaction(ctx context.Context, arg CreateStoryReactionParams) (StoryReaction, error)
@@ -38,6 +40,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Used for panic mode - deletes all user data
 	DeleteAllUserData(ctx context.Context, id uuid.UUID) error
+	DeleteArchivedStory(ctx context.Context, arg DeleteArchivedStoryParams) error
 	DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error
 	DeleteConversation(ctx context.Context, arg DeleteConversationParams) error
 	DeleteExpiredLocations(ctx context.Context) error
@@ -56,6 +59,8 @@ type Querier interface {
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 	// Block Logic
 	FindPotentialCrossings(ctx context.Context, arg FindPotentialCrossingsParams) ([]FindPotentialCrossingsRow, error)
+	GetArchivedStories(ctx context.Context, arg GetArchivedStoriesParams) ([]ArchivedStory, error)
+	GetArchivedStory(ctx context.Context, arg GetArchivedStoryParams) (ArchivedStory, error)
 	GetBlockedUsers(ctx context.Context, blockerID uuid.UUID) ([]GetBlockedUsersRow, error)
 	GetConnection(ctx context.Context, arg GetConnectionParams) (Connection, error)
 	// Get stories from connected users (not limited by radius)
@@ -75,7 +80,7 @@ type Querier interface {
 	// AND DATE(u.last_active_at) >= CURRENT_DATE - INTERVAL '1 day'
 	GetStoriesInBounds(ctx context.Context, arg GetStoriesInBoundsParams) ([]GetStoriesInBoundsRow, error)
 	GetStoriesWithinRadius(ctx context.Context, arg GetStoriesWithinRadiusParams) ([]GetStoriesWithinRadiusRow, error)
-	GetStoryByID(ctx context.Context, id uuid.UUID) (Story, error)
+	GetStoryByID(ctx context.Context, id uuid.UUID) (GetStoryByIDRow, error)
 	GetStoryMentions(ctx context.Context, storyID uuid.UUID) ([]GetStoryMentionsRow, error)
 	GetStoryReactions(ctx context.Context, storyID uuid.UUID) ([]GetStoryReactionsRow, error)
 	// Admin: Story stats
@@ -122,6 +127,7 @@ type Querier interface {
 	UnblockUser(ctx context.Context, arg UnblockUserParams) error
 	UpdateConnectionStatus(ctx context.Context, arg UpdateConnectionStatusParams) (Connection, error)
 	UpdateMessage(ctx context.Context, arg UpdateMessageParams) (Message, error)
+	UpdateStory(ctx context.Context, arg UpdateStoryParams) (UpdateStoryRow, error)
 	// Updates last_active_at and calculates activity streak
 	UpdateUserActivity(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) (UpdateUserEmailRow, error)
