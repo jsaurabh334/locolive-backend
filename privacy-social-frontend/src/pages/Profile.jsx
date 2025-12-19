@@ -4,7 +4,7 @@ import { useMyProfile, useUserProfile } from '../features/profile/useProfile';
 import { useAuth } from '../context/AuthContext';
 import { useConnections, usePendingRequests, useSentRequests, useSendRequest, useRemoveConnection } from '../features/connections/useConnections';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import apiClient from '../api/client';
+import apiClient, { getMediaUrl } from '../api/client';
 import EditProfile from '../features/profile/EditProfile';
 import Button from '../components/ui/Button';
 import Loader from '../components/ui/Loader';
@@ -126,7 +126,8 @@ const Profile = () => {
     const userDisplay = profile || {
         username: 'User',
         full_name: 'Unknown',
-        bio: 'No bio yet.'
+        bio: 'No bio yet.',
+        links: []
     };
 
     return (
@@ -159,7 +160,7 @@ const Profile = () => {
                                 <div className="w-32 h-32 rounded-full bg-background flex items-center justify-center overflow-hidden ring-4 ring-background/50 group-hover:ring-primary-500/30 transition-all duration-300">
                                     {userDisplay.avatar_url ? (
                                         <img
-                                            src={userDisplay.avatar_url}
+                                            src={getMediaUrl(userDisplay.avatar_url)}
                                             alt={userDisplay.username}
                                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
@@ -190,6 +191,34 @@ const Profile = () => {
                             <p className="text-center text-text-secondary/80 italic font-light text-sm leading-relaxed max-w-md px-6 py-3 bg-surface/30 rounded-2xl border border-border/30 backdrop-blur-sm">
                                 "{userDisplay.bio}"
                             </p>
+                        )}
+
+                        {/* Multiple Links Display */}
+                        {userDisplay.links && userDisplay.links.length > 0 && (
+                            <div className="mt-6 flex flex-wrap justify-center gap-3">
+                                {userDisplay.links.map((link, index) => (
+                                    <a
+                                        key={index}
+                                        href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-surface/40 border border-border/50 text-text-secondary hover:text-primary-500 hover:bg-surface/60 hover:border-primary-500/30 hover:scale-105 hover:shadow-lg transition-all duration-300 backdrop-blur-sm group/link"
+                                    >
+                                        <span className="text-sm group-hover/link:animate-bounce">
+                                            {link.label?.toLowerCase() === 'twitter' || link.label?.toLowerCase() === 'x' ? '𝕏' :
+                                                link.label?.toLowerCase() === 'github' ? '🐙' :
+                                                    link.label?.toLowerCase() === 'linkedin' ? '💼' :
+                                                        link.label?.toLowerCase() === 'instagram' ? '📸' : '🔗'}
+                                        </span>
+                                        <span className="text-sm font-medium tracking-wide">
+                                            {link.label || 'Link'}
+                                        </span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 opacity-40 group-hover/link:opacity-100 transition-opacity">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                        </svg>
+                                    </a>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -277,7 +306,7 @@ const Profile = () => {
                                         >
                                             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center text-white font-semibold overflow-hidden">
                                                 {visitor.avatar_url ? (
-                                                    <img src={visitor.avatar_url} alt={visitor.username} className="w-full h-full object-cover" />
+                                                    <img src={getMediaUrl(visitor.avatar_url)} alt={visitor.username} className="w-full h-full object-cover" />
                                                 ) : (
                                                     visitor.username[0].toUpperCase()
                                                 )}

@@ -2,6 +2,7 @@ import { useFeed } from '../features/feed/useFeed';
 import Card from '../components/ui/Card';
 import Loader from '../components/ui/Loader';
 import { useNavigate } from 'react-router-dom';
+import { getMediaUrl } from '../api/client';
 
 const Explore = () => {
     const { data: feed, isLoading } = useFeed();
@@ -57,7 +58,7 @@ const Explore = () => {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
                         {stories.map((story, index) => {
                             const username = story.username?.String || story.username || 'Anonymous';
-                            const mediaUrl = story.media_url?.String || story.media_url || '';
+                            const mediaUrl = getMediaUrl(story.media_url?.String || story.media_url);
                             const caption = story.caption?.String || story.caption || '';
                             const displayCaption = typeof caption === 'string' ? caption : '';
 

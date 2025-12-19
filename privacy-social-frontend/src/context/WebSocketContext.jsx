@@ -30,7 +30,7 @@ export const WebSocketProvider = ({ children }) => {
                 wsRef.current.close();
             }
 
-            const wsUrl = `ws://localhost:8080/ws/chat?token=${token}`;
+            const wsUrl = `wss://${window.location.host}/ws/chat?token=${token}`;
             ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 

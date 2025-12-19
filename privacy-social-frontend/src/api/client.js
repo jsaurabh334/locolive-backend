@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '../features/auth/authStore';
 
-const API_URL = 'http://localhost:8080';
+const API_URL = '/api';
 
 const apiClient = axios.create({
     baseURL: API_URL,
@@ -9,6 +9,16 @@ const apiClient = axios.create({
         'Content-Type': 'application/json',
     },
 });
+
+/**
+ * Ensures media URLs are relative and proxied correctly.
+ * Useful for fixing "Mixed Content" errors where backend might return absolute http:// URLs.
+ */
+export const getMediaUrl = (url) => {
+    if (!url) return '';
+    if (typeof url !== 'string') return '';
+    return url.replace('http://localhost:8080', '/api');
+};
 
 // Define API methods using the apiClient instance
 const apiService = {
@@ -59,6 +69,7 @@ const apiService = {
     getFeed: (page = 1, lat, lng) => apiClient.get(`/feed?page=${page}&latitude=${lat}&longitude=${lng}`),
     createStory: (data) => apiClient.post('/stories', data),
     getStory: (id) => apiClient.get(`/stories/${id}`),
+    updateStory: (id, data) => apiClient.put(`/stories/${id}`, data),
     deleteStory: (id) => apiClient.delete(`/stories/${id}`),
     getStoriesMap: (north, south, east, west) => apiClient.get(`/stories/map?north=${north}&south=${south}&east=${east}&west=${west}`),
     getConnectionStories: () => apiClient.get('/stories/connections'),
@@ -68,6 +79,9 @@ const apiService = {
     deleteStoryReaction: (id, emoji) => apiClient.delete(`/stories/${id}/react`, { data: { emoji } }),
     getStoryReactions: (id) => apiClient.get(`/stories/${id}/reactions`),
     shareStory: (data) => apiClient.post('/stories/share', data),
+    archiveStory: (id) => apiClient.post(`/stories/${id}/archive`),
+    getArchivedStories: (page = 1, pageSize = 20) => apiClient.get(`/stories/archived?page=${page}&page_size=${pageSize}`),
+    deleteArchivedStory: (id) => apiClient.delete(`/stories/archived/${id}`),
 
     // Notifications
     getNotifications: (page = 1) => apiClient.get(`/notifications?page=${page}`),

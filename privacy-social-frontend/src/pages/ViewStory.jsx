@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import apiService from '../api/client';
+import apiService, { getMediaUrl } from '../api/client';
 import ReactionPicker from '../components/story/ReactionPicker';
 import ShareModal from '../components/story/ShareModal';
 import StoryViewersModal from '../components/story/StoryViewersModal';
+import EditStoryModal from '../components/story/EditStoryModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const ViewStory = () => {
@@ -14,9 +15,14 @@ const ViewStory = () => {
     const { user } = useAuth();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [address, setAddress] = useState('');
     const [showShareModal, setShowShareModal] = useState(false);
     const [showViewersModal, setShowViewersModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
     const [error, setError] = useState(null);
+    const [progress, setProgress] = useState(0);
+
+    const STORY_DURATION = 5000; // 5 seconds per story
 
     const rawStories = location.state?.stories || [];
     const initialIndex = location.state?.initialIndex || 0;
@@ -31,9 +37,9 @@ const ViewStory = () => {
         ...story,
         username: story.username?.String || story.username || 'Anonymous',
         caption: story.caption?.String || story.caption || '',
-        media_url: story.media_url?.String || story.media_url || '',
-        avatar_url: story.avatar_url?.String || story.avatar_url || '',
-        thumbnail_url: story.thumbnail_url?.String || story.thumbnail_url || ''
+        media_url: getMediaUrl(story.media_url?.String || story.media_url),
+        avatar_url: getMediaUrl(story.avatar_url?.String || story.avatar_url),
+        thumbnail_url: getMediaUrl(story.thumbnail_url?.String || story.thumbnail_url)
     });
 
     const [stories, setStories] = useState(rawStories.map(cleanStory));
@@ -100,6 +106,35 @@ const ViewStory = () => {
             });
         }
     }, [currentStory?.id]);
+
+
+    // Reverse Geocoding for generalized location display
+    useEffect(() => {
+        const hasCoords = (currentStory?.lat !== undefined && currentStory?.lat !== null) &&
+            (currentStory?.lng !== undefined && currentStory?.lng !== null);
+
+        if (currentStory?.show_location && !currentStory?.is_anonymous && hasCoords) {
+            setAddress('');
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentStory.lat}&lon=${currentStory.lng}&zoom=18&addressdetails=1`)
+                .then(res => res.json())
+                .then(data => {
+                    const addr = data?.address || {};
+                    const parts = [];
+                    if (addr.suburb) parts.push(addr.suburb);
+                    if (addr.city || addr.town || addr.village) parts.push(addr.city || addr.town || addr.village);
+                    if (parts.length === 0 && addr.state) parts.push(addr.state);
+
+                    const displayAddr = parts.slice(0, 2).join(', ') || 'Nearby';
+                    setAddress(displayAddr);
+                })
+                .catch(err => {
+                    console.error('Geocoding failed:', err);
+                    setAddress('Nearby');
+                });
+        } else {
+            setAddress('');
+        }
+    }, [currentStory?.id, currentStory?.show_location, currentStory?.is_anonymous, currentStory?.lat, currentStory?.lng]);
 
     // Use React Query for reactions with caching
     const { data: reactions = [] } = useQuery({
@@ -191,6 +226,27 @@ const ViewStory = () => {
         navigate(-1);
     };
 
+    // Auto-advance logic
+    useEffect(() => {
+        if (!currentStory) return;
+
+        setProgress(0);
+        const startTime = Date.now();
+
+        const interval = setInterval(() => {
+            const elapsedTime = Date.now() - startTime;
+            const newProgress = Math.min((elapsedTime / STORY_DURATION) * 100, 100);
+            setProgress(newProgress);
+
+            if (newProgress >= 100) {
+                clearInterval(interval);
+                handleNext();
+            }
+        }, 50);
+
+        return () => clearInterval(interval);
+    }, [currentIndex, stories.length]); // Re-run timer when story changes
+
     const handleDelete = async () => {
         if (!currentStory || !user) return;
 
@@ -227,6 +283,25 @@ const ViewStory = () => {
         } finally {
             setIsDeleting(false);
         }
+    };
+
+    const canEdit = () => {
+        if (!currentStory || !user || !isOwnStory) return false;
+        const createdAt = new Date(currentStory.created_at);
+        const now = new Date();
+        const diffMinutes = (now - createdAt) / 1000 / 60;
+        return diffMinutes <= 15;
+    };
+
+    const handleStoryUpdate = (updatedStory) => {
+        // Update the story in the local state
+        const updatedStories = [...stories];
+        updatedStories[currentIndex] = { ...updatedStories[currentIndex], ...updatedStory };
+        setStories(updatedStories);
+
+        // Invalidate queries to refresh data
+        queryClient.invalidateQueries({ queryKey: ['feed'] });
+        queryClient.invalidateQueries({ queryKey: ['story', currentStory.id] });
     };
 
     if (!currentStory) {
@@ -276,6 +351,35 @@ const ViewStory = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                     </svg>
                 </button>
+                {isOwnStory && canEdit() && (
+                    <button
+                        onClick={() => setShowEditModal(true)}
+                        className="p-2 rounded-full bg-black/50 hover:bg-blue-600/70 transition"
+                        title="Edit story (available for 15 minutes)"
+                    >
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    </button>
+                )}
+                {isOwnStory && (
+                    <button
+                        onClick={async () => {
+                            try {
+                                await apiService.archiveStory(currentStory.id);
+                                showError('Story archived successfully!');
+                            } catch (error) {
+                                showError(error.response?.data?.error || 'Failed to archive story');
+                            }
+                        }}
+                        className="p-2 rounded-full bg-black/50 hover:bg-green-600/70 transition"
+                        title="Archive story"
+                    >
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                        </svg>
+                    </button>
+                )}
                 {isOwnStory && (
                     <button
                         onClick={handleDelete}
@@ -305,8 +409,11 @@ const ViewStory = () => {
                             className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden"
                         >
                             <div
-                                className={`h-full bg-white transition-all duration-300 ${index === currentIndex ? 'w-full' : index < currentIndex ? 'w-full' : 'w-0'
-                                    }`}
+                                className={`h-full bg-white transition-all`}
+                                style={{
+                                    width: index === currentIndex ? `${progress}%` : index < currentIndex ? '100%' : '0%',
+                                    transitionDuration: index === currentIndex ? '50ms' : '300ms'
+                                }}
                             />
                         </div>
                     ))}
@@ -319,37 +426,47 @@ const ViewStory = () => {
                     </div>
                     <div className="flex-1">
                         <p className="text-white font-semibold">{String(currentStory.username || 'Anonymous')}</p>
-                        <div className="flex flex-col">
-                            <p className="text-white/70 text-xs">
+                        <div className="flex items-center gap-2">
+                            <p className="text-white/70 text-xs text-shadow-sm">
                                 {new Date(currentStory.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </p>
-                            <p className="text-red-300 text-[10px] font-medium mt-0.5">
-                                Expires in {(() => {
-                                    if (!currentStory.expires_at) return '24h';
-                                    const diff = new Date(currentStory.expires_at) - new Date();
-                                    if (diff <= 0) return 'Soon';
-                                    const h = Math.floor(diff / 3600000);
-                                    const m = Math.floor((diff % 3600000) / 60000);
-                                    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-                                })()}
-                            </p>
+                            {currentStory.show_location && !currentStory.is_anonymous && (
+                                <>
+                                    <span className="text-white/40 text-[10px]">•</span>
+                                    <p className="text-white font-medium text-[10px] flex items-center gap-1 animate-fade-in bg-black/20 px-1.5 py-0.5 rounded-full">
+                                        <span>📍</span> {address || 'Locating...'}
+                                    </p>
+                                </>
+                            )}
                         </div>
+                        <p className="text-red-300 text-[10px] font-medium mt-1">
+                            Expires in {(() => {
+                                if (!currentStory.expires_at) return '24h';
+                                const diff = new Date(currentStory.expires_at) - new Date();
+                                if (diff <= 0) return 'Soon';
+                                const h = Math.floor(diff / 3600000);
+                                const m = Math.floor((diff % 3600000) / 60000);
+                                return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                            })()}
+                        </p>
                     </div>
                 </div>
 
                 {/* Main Media */}
                 <img
-                    src={String(currentStory.media_url || '')}
+                    src={getMediaUrl(String(currentStory.media_url || ''))}
                     alt="Story"
                     className="w-full h-full object-contain"
                 />
 
                 {/* Caption */}
-                {currentStory.caption && (
-                    <div className="absolute bottom-20 left-0 right-0 z-40 p-4 bg-gradient-to-t from-black/80 to-transparent">
-                        <p className="text-white">{String(currentStory.caption)}</p>
-                    </div>
-                )}
+                {
+                    currentStory.caption && (
+                        <div className="absolute bottom-20 left-0 right-0 z-40 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                            <p className="text-white">{String(currentStory.caption)}</p>
+                        </div>
+                    )
+                }
 
                 {/* Bottom Bar */}
                 <div className="absolute bottom-4 left-0 right-0 z-40 px-4 flex items-center justify-between">
@@ -384,19 +501,32 @@ const ViewStory = () => {
                 </div>
 
                 {/* Modals */}
-                {showShareModal && (
-                    <ShareModal
-                        storyId={currentStory.id}
-                        onClose={() => setShowShareModal(false)}
-                    />
-                )}
-                {showViewersModal && (
-                    <StoryViewersModal
-                        storyId={currentStory.id}
-                        onClose={() => setShowViewersModal(false)}
-                    />
-                )}
-            </div>
+                {
+                    showShareModal && (
+                        <ShareModal
+                            storyId={currentStory.id}
+                            onClose={() => setShowShareModal(false)}
+                        />
+                    )
+                }
+                {
+                    showViewersModal && (
+                        <StoryViewersModal
+                            storyId={currentStory.id}
+                            onClose={() => setShowViewersModal(false)}
+                        />
+                    )
+                }
+                {
+                    showEditModal && (
+                        <EditStoryModal
+                            story={currentStory}
+                            onClose={() => setShowEditModal(false)}
+                            onUpdate={handleStoryUpdate}
+                        />
+                    )
+                }
+            </div >
         </div >
     );
 };

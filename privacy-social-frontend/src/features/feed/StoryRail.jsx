@@ -1,17 +1,28 @@
 import React from 'react';
 import { useFeed } from './useFeed';
 import { Link, useNavigate } from 'react-router-dom';
+import { getMediaUrl } from '../../api/client';
 import Avatar from '../../components/ui/Avatar';
 import { useLocation } from '../../context/LocationContext';
 
-const StoryItem = ({ group }) => {
+const StoryItem = ({ group, allGroupedStories }) => {
     const navigate = useNavigate();
     const { user, stories } = group;
-    // const latestStory = stories[0]; 
 
     const handleClick = () => {
-        // Pass ONLY this user's stories to ViewStory
-        navigate('/view-story', { state: { stories: stories, initialIndex: 0 } });
+        // Flatten all stories from all groups to allow seamless transition across users
+        const flattenedStories = allGroupedStories.flatMap(g => g.stories);
+
+        // Find the index of the first story of the clicked group in the flattened list
+        const startStoryId = stories[0]?.id;
+        const initialIndex = flattenedStories.findIndex(s => s.id === startStoryId);
+
+        navigate('/view-story', {
+            state: {
+                stories: flattenedStories,
+                initialIndex: Math.max(0, initialIndex)
+            }
+        });
     };
 
     // Check if all stories are seen
@@ -82,19 +93,30 @@ const StoryRail = () => {
     const searchRadius = feedData?.search_radius;
     const searchRadiusKm = searchRadius ? Math.round(searchRadius / 1000) : 5;
 
-    // Group stories by user
+    // Group stories by user and deduplicate by story ID
     const groupedStories = React.useMemo(() => {
         if (!stories) return [];
 
+        console.log('StoryRail: stories count', stories.length);
+
         const groups = {};
+        const seenStoryIds = new Set();
+
         stories.forEach(story => {
+            // Deduplicate stories by ID
+            if (seenStoryIds.has(story.id)) {
+                console.warn('StoryRail: detected duplicate story ID', story.id);
+                return;
+            }
+            seenStoryIds.add(story.id);
+
             const userId = story.user_id;
             if (!groups[userId]) {
                 groups[userId] = {
                     user: {
                         id: story.user_id,
                         username: story.username,
-                        avatar_url: story.avatar_url
+                        avatar_url: getMediaUrl(story.avatar_url)
                     },
                     stories: []
                 };
@@ -102,8 +124,9 @@ const StoryRail = () => {
             groups[userId].stories.push(story);
         });
 
-        // Convert to array
-        return Object.values(groups);
+        const result = Object.values(groups);
+        console.log('StoryRail: grouped stories count', result.length);
+        return result;
     }, [stories]);
 
     if (locationError) {
@@ -138,7 +161,11 @@ const StoryRail = () => {
                         </div>
                     ) : (
                         groupedStories.map((group) => (
-                            <StoryItem key={group.user.id} group={group} />
+                            <StoryItem
+                                key={group.user.id}
+                                group={group}
+                                allGroupedStories={groupedStories}
+                            />
                         ))
                     )}
                 </div>

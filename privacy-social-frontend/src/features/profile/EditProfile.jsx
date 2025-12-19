@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useUpdateProfile } from './useProfile';
@@ -16,7 +16,9 @@ const EditProfile = ({ profile, onClose }) => {
         bio: profile?.bio || '',
         avatar_url: profile?.avatar_url || '',
         theme: profile?.theme || 'light',
-        profile_visibility: profile?.profile_visibility || 'public'
+        profile_visibility: profile?.profile_visibility || 'public',
+        website_url: profile?.website_url || '',
+        links: profile?.links || []
     });
 
     const [isUploading, setIsUploading] = useState(false);
@@ -46,10 +48,13 @@ const EditProfile = ({ profile, onClose }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        updateProfile(formData, {
+
+        // Clean up empty links before sending
+        const cleanedLinks = formData.links.filter(link => link.url.trim() !== '');
+        const submissionData = { ...formData, links: cleanedLinks };
+
+        updateProfile(submissionData, {
             onSuccess: async (data) => {
-                // Update auth store with new profile data
-                // We fetch the profile again to ensure we have the full updated object
                 try {
                     const response = await apiService.getMyProfile();
                     if (response.data) {
@@ -59,7 +64,7 @@ const EditProfile = ({ profile, onClose }) => {
                     onClose();
                 } catch (err) {
                     console.error("Failed to refresh profile", err);
-                    onClose(); // Close anyway if update succeeded
+                    onClose();
                 }
             },
             onError: (err) => {
@@ -69,9 +74,30 @@ const EditProfile = ({ profile, onClose }) => {
         });
     };
 
+    const addLink = () => {
+        setFormData(prev => ({
+            ...prev,
+            links: [...prev.links, { label: '', url: '' }]
+        }));
+    };
+
+    const removeLink = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            links: prev.links.filter((_, i) => i !== index)
+        }));
+    };
+
+    const updateLink = (index, field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            links: prev.links.map((link, i) => i === index ? { ...link, [field]: value } : link)
+        }));
+    };
+
     return (
         <Modal title="Edit Profile" onClose={onClose}>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto px-1 custom-scrollbar">
                 {/* Avatar Upload Section */}
                 <div className="flex flex-col items-center space-y-4">
                     <div className="relative">
@@ -152,18 +178,68 @@ const EditProfile = ({ profile, onClose }) => {
                             <p className="text-xs text-text-tertiary">{formData.bio.length}/150</p>
                         </div>
                     </div>
+
+                    {/* Multiple Links Section */}
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Links</label>
+                            <button
+                                type="button"
+                                onClick={addLink}
+                                className="text-xs font-bold text-primary-500 hover:text-primary-600 transition-colors flex items-center gap-1"
+                            >
+                                <span>+ Add Link</span>
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {formData.links.map((link, index) => (
+                                <div key={index} className="group relative bg-background/40 p-3 rounded-2xl border border-border/30 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <button
+                                        type="button"
+                                        onClick={() => removeLink(index)}
+                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                                    >
+                                        ✕
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            type="text"
+                                            value={link.label}
+                                            onChange={(e) => updateLink(index, 'label', e.target.value)}
+                                            placeholder="Label (e.g. Portfolio)"
+                                            className="px-3 py-2 bg-background/70 border-0 rounded-xl text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all"
+                                        />
+                                        <input
+                                            type="url"
+                                            value={link.url}
+                                            onChange={(e) => updateLink(index, 'url', e.target.value)}
+                                            placeholder="URL"
+                                            className="px-3 py-2 bg-background/70 border-0 rounded-xl text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500/30 transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            {formData.links.length === 0 && (
+                                <p className="text-xs text-center text-text-tertiary italic py-2">No links added yet.</p>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Submit Button */}
-                <Button
-                    type="submit"
-                    isLoading={isPending || isUploading}
-                    className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 shadow-lg"
-                >
-                    {isPending || isUploading ? 'Saving...' : 'Save Changes'}
-                </Button>
+                <div className="pt-2">
+                    <Button
+                        type="submit"
+                        isLoading={isPending || isUploading}
+                        className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 shadow-lg"
+                    >
+                        {isPending || isUploading ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                </div>
+
                 {error && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm text-center mb-4">
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm text-center">
                         {error}
                     </div>
                 )}

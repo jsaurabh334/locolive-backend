@@ -24,6 +24,7 @@ const Profile = React.lazy(() => import('./pages/Profile'));
 const Connections = React.lazy(() => import('./pages/Connections'));
 const Chat = React.lazy(() => import('./pages/Chat'));
 const StoryMap = React.lazy(() => import('./pages/StoryMap'));
+const ArchivedStories = React.lazy(() => import('./pages/ArchivedStories'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 const Crossings = React.lazy(() => import('./pages/Crossings'));
 
@@ -97,6 +98,7 @@ function App() {
                           <Route path="/messages" element={<Chat />} />
                           <Route path="/chat" element={<Chat />} />
                           <Route path="/crossings" element={<Crossings />} />
+                          <Route path="/archived-stories" element={<ArchivedStories />} />
                           <Route path="/settings" element={<Settings />} />
                         </Route>
                       </Route>

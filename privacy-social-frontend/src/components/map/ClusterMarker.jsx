@@ -1,6 +1,7 @@
 import { Marker, Popup } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import { useNavigate } from 'react-router-dom';
+import { getMediaUrl } from '../../api/client';
 
 const ClusterMarker = ({ cluster }) => {
     const navigate = useNavigate();
@@ -41,7 +42,7 @@ const ClusterMarker = ({ cluster }) => {
                                 {cluster.stories.slice(0, 3).map((story, idx) => (
                                     <img
                                         key={idx}
-                                        src={story.media_url}
+                                        src={getMediaUrl(story.media_url)}
                                         alt="Story"
                                         className="w-full h-16 object-cover rounded"
                                     />
