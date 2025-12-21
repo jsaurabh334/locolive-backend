@@ -123,7 +123,7 @@ RETURNING id, username, full_name, avatar_url, bio, banner_url, theme, profile_v
 SELECT 
   u.id, u.username, u.full_name, u.avatar_url, u.bio, u.banner_url, u.theme, u.profile_visibility, u.email, u.is_ghost_mode, u.website_url, u.links, u.created_at, u.is_premium, u.last_active_at,
   (SELECT COUNT(*) FROM stories WHERE stories.user_id = u.id) as story_count,
-  (SELECT COUNT(*) FROM connections WHERE connections.requester_id = u.id OR connections.target_id = u.id) as connection_count,
+  (SELECT COUNT(*) FROM connections WHERE (connections.requester_id = u.id OR connections.target_id = u.id) AND status = 'accepted') as connection_count,
   CASE
     WHEN DATE(u.last_active_at) < CURRENT_DATE - INTERVAL '1 day' THEN 0
     ELSE u.activity_streak

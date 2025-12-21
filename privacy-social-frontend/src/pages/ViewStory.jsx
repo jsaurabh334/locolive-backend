@@ -22,7 +22,7 @@ const ViewStory = () => {
     const [error, setError] = useState(null);
     const [progress, setProgress] = useState(0);
 
-    const STORY_DURATION = 5000; // 5 seconds per story
+    const STORY_DURATION = 15000; // 15 seconds per story
 
     const rawStories = location.state?.stories || [];
     const initialIndex = location.state?.initialIndex || 0;
